@@ -1,0 +1,6 @@
+# title: AUR packages
+# required: no
+# about: Not in the official repos; built by an AUR helper (yay or paru). Read each PKGBUILD before you build it.
+bibata-cursor-theme | Cursor theme (Bibata-Modern-Classic). Without it you get the default cursor.
+zen-browser-bin | Web browser bound to SUPER+B. Skip it and change the bind in ~/.config/hypr/binds.lua if you use another browser.
+pipes.sh | Animated pipes terminal toy (SUPER+ALT+P). Purely decorative.

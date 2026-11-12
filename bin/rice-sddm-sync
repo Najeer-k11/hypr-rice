@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+# rice-sddm-sync — copy current wallpaper + matugen colours into the SDDM theme.
+# Theme dir is owned by the user (one-time sudo install), so no root needed here.
+set -euo pipefail
+T=/usr/share/sddm/themes/rice
+[[ -w "$T" ]] || { echo "rice-sddm-sync: $T not writable" >&2; exit 1; }
+C="$HOME/.config/hypr/hyprlock-colors.conf"
+col() { sed -nE "s/^\\\$$1 = rgb\(([0-9a-fA-F]{6})\)/#\1/p" "$C"; }
+img="$(sed -nE 's/^\$wallpaper = //p' "$C")"
+[[ -f "$img" ]] && magick "$img" -resize '1920x1080^' -quality 92 "$T/background.jpg"
+cat > "$T/theme.conf" <<CONF
+[General]
+background=background.jpg
+primary=$(col primary)
+surface=$(col surface)
+onSurface=$(col on_surface)
+onSurfaceVariant=$(col on_surface_variant)
+surfaceContainerHigh=$(col surface_container_high)
+error=$(col error)
+CONF

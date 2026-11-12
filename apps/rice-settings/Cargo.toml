@@ -1,0 +1,17 @@
+[package]
+name = "rice-settings"
+version = "0.2.0"
+edition = "2021"
+license = "Unlicense"
+description = "All-in-one settings app for Hyprland: wallpaper, colours, appearance, panel, wi-fi, bluetooth, display, power, keyboard, about"
+
+[dependencies]
+gtk = { package = "gtk4", version = "0.11", features = ["v4_14"] }
+serde_json = { version = "1", features = ["preserve_order"] }
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true

@@ -1,0 +1,49 @@
+#!/usr/bin/env python3
+"""rice-vscode-sync — merge matugen's VS Code palette into Code OSS settings.json.
+Code watches settings.json, so open windows recolour live (no reload)."""
+import json, os, re, sys, tempfile
+from pathlib import Path
+
+GEN = Path.home() / ".cache/rice/vscode-colors.json"
+ENV = Path.home() / ".config/rice/theme.env"
+TARGETS = [Path.home() / ".config" / d / "User/settings.json"
+           for d in ("Code - OSS", "Code", "VSCodium")]
+
+def strip_jsonc(s):
+    # drop // and /* */ comments outside strings, then trailing commas
+    out, i, n, q = [], 0, len(s), None
+    while i < n:
+        c = s[i]
+        if q:
+            out.append(c)
+            if c == "\\": out.append(s[i+1:i+2]); i += 1
+            elif c == q: q = None
+        elif c == '"': q = c; out.append(c)
+        elif s.startswith("//", i): i = s.find("\n", i); i = n if i < 0 else i; continue
+        elif s.startswith("/*", i): i = s.find("*/", i) + 2; continue
+        else: out.append(c)
+        i += 1
+    return re.sub(r",(\s*[}\]])", r"\1", "".join(out))
+
+def main():
+    gen = json.loads(GEN.read_text())
+    mode = "dark"
+    if ENV.exists():
+        m = re.search(r'^\s*MODE=["\']?(\w+)', ENV.read_text(), re.M)
+        if m: mode = m.group(1)
+    gen["workbench.colorTheme"] = "Default Light Modern" if mode == "light" else "Default Dark Modern"
+
+    for p in TARGETS:
+        if not p.parent.is_dir(): continue
+        raw = p.read_text() if p.exists() else "{}"
+        try:
+            cfg = json.loads(strip_jsonc(raw) or "{}")
+        except json.JSONDecodeError as e:
+            print(f"rice-vscode-sync: skipping {p}: {e}", file=sys.stderr); continue
+        if all(cfg.get(k) == v for k, v in gen.items()): continue
+        cfg.update(gen)
+        fd, tmp = tempfile.mkstemp(dir=p.parent, prefix=".settings.")
+        with os.fdopen(fd, "w") as f: json.dump(cfg, f, indent=4); f.write("\n")
+        os.replace(tmp, p)
+
+main()

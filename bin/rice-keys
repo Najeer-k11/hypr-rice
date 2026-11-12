@@ -1,0 +1,30 @@
+#!/usr/bin/env bash
+fuzzel --dmenu --prompt '  ' --placeholder 'keybinds' --lines 25 --width 52 >/dev/null <<'K'
+SUPER Return          terminal
+SUPER Space / R       launcher
+SUPER E               files
+SUPER B               browser
+SUPER V               clipboard history
+SUPER W               pick wallpaper (re-themes everything)
+SUPER ALT W           wallpaper list
+SUPER I               settings
+SUPER SHIFT W         random wallpaper
+SUPER Q               close window
+SUPER F / M           fullscreen / maximize
+SUPER T               toggle floating
+SUPER C / P           center / pin floating
+SUPER J               toggle split
+SUPER G               toggle group
+ALT Tab               window switcher (SHIFT = this workspace only)
+SUPER Tab             workspace overview
+SUPER h k / ←↓↑→     focus (SHIFT move, CTRL resize)
+SUPER 1-0             workspace (SHIFT = send window)
+SUPER ` / [ / ]       last / prev / next workspace
+SUPER S / ALT S       scratchpad / send to scratchpad
+SUPER N / SHIFT N     do-not-disturb / clear notifications
+SUPER CTRL B          toggle bar
+SUPER ALT P           pipes
+Print / SUPER SHIFT S screenshot region (SHIFT Print = screen)
+SUPER L / Escape      lock
+SUPER SHIFT Escape    power menu
+K

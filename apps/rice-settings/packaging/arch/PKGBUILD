@@ -1,0 +1,42 @@
+# Build from this checkout:  cd packaging/arch && makepkg -si
+# (lives in a subfolder so makepkg's src/ scratch dir never collides with the Rust src/)
+pkgname=rice-settings
+pkgver=0.2.0
+pkgrel=1
+pkgdesc="All-in-one settings app for Hyprland: wallpaper, colours, appearance, panel, wi-fi, bluetooth, display, power, keyboard"
+arch=('x86_64' 'aarch64')
+license=('Unlicense')
+depends=('gtk4' 'hyprland')
+makedepends=('cargo')
+optdepends=(
+  'matugen-bin: colour palette from the wallpaper (AUR)'
+  'swww: set wallpapers (or awww / hyprpaper)'
+  'networkmanager: wi-fi page'
+  'bluez-utils: bluetooth page'
+  'power-profiles-daemon: power profiles'
+  'brightnessctl: keyboard backlight without root'
+  'asusctl: ASUS keyboard RGB and charge limit (AUR)'
+  'openrgb: RGB keyboards on other laptops'
+  'waybar: panel page'
+)
+options=('!lto')
+
+build() {
+  cd "$startdir/../.."
+  export CARGO_TARGET_DIR="$srcdir/target"
+  cargo build --release --locked
+}
+
+check() {
+  cd "$startdir/../.."
+  export CARGO_TARGET_DIR="$srcdir/target"
+  cargo test --release --locked
+}
+
+package() {
+  cd "$startdir/../.."
+  install -Dm755 "$srcdir/target/release/rice-settings" "$pkgdir/usr/bin/rice-settings"
+  install -Dm644 rice-settings.desktop "$pkgdir/usr/share/applications/rice-settings.desktop"
+  install -Dm644 README.md "$pkgdir/usr/share/doc/rice-settings/README.md"
+  install -Dm644 LICENSE "$pkgdir/usr/share/licenses/rice-settings/LICENSE"
+}

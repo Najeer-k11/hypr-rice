@@ -1,0 +1,204 @@
+{
+  "reload_style_on_change": true,
+  "layer": "top",
+  "position": "top",
+  "mode": "dock",
+  "spacing": 0,
+  "height": 26,
+  "margin-top": 2,
+  "margin-left": 2,
+  "margin-right": 2,
+  "modules-left": [
+    "custom/distro",
+    "hyprland/workspaces",
+    "custom/lyra"
+  ],
+  "modules-center": [
+    "hyprland/window"
+  ],
+  "modules-right": [
+    "tray",
+    "custom/profile",
+    "memory",
+    "backlight",
+    "custom/arch",
+    "group/ctl",
+    "clock",
+    "custom/power"
+  ],
+  "custom/distro": {
+    "format": "󰌽",
+    "tooltip-format": "launcher",
+    "on-click": "fuzzel"
+  },
+  "hyprland/workspaces": {
+    "format": "{icon}",
+    "format-icons": {
+      "default": "",
+      "active": ""
+    },
+    "persistent-workspaces": {
+      "*": 5
+    },
+    "on-scroll-up": "hyprctl dispatch 'hl.dsp.focus({workspace=\"e-1\"})'",
+    "on-scroll-down": "hyprctl dispatch 'hl.dsp.focus({workspace=\"e+1\"})'"
+  },
+  "custom/lyra": {
+    "exec": "lyra bar",
+    "return-type": "json",
+    "max-length": 28,
+    "escape": false,
+    "on-click": "lyra toggle",
+    "on-click-right": "playerctl play-pause",
+    "on-scroll-up": "playerctl next",
+    "on-scroll-down": "playerctl previous"
+  },
+  "hyprland/window": {
+    "format": "{title}",
+    "max-length": 40,
+    "separate-outputs": true,
+    "icon": false
+  },
+  "tray": {
+    "icon-size": 13,
+    "spacing": 6
+  },
+  "custom/profile": {
+    "exec": "rice-profile status",
+    "return-type": "json",
+    "interval": 30,
+    "signal": 8,
+    "on-click": "rice-profile"
+  },
+  "memory": {
+    "interval": 5,
+    "format": "󰘚 {percentage}%",
+    "format-warning": "󰀧 {percentage}%",
+    "format-critical": "󰀧 {percentage}%",
+    "states": {
+      "warning": 75,
+      "critical": 90
+    },
+    "tooltip-format": "Memory: {used:0.1f} / {total:0.1f} GiB · swap {swapUsed:0.1f} GiB",
+    "on-click": "rice-mem"
+  },
+  "backlight": {
+    "format": "{icon} {percent}%",
+    "format-icons": [
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      ""
+    ],
+    "on-scroll-up": "brightnessctl -q set 5%+",
+    "on-scroll-down": "brightnessctl -q set 5%-",
+    "tooltip-format": "brightness"
+  },
+  "custom/arch": {
+    "format": "󰣇",
+    "tooltip-format": "wallpaper",
+    "on-click": "rice-wallpicker"
+  },
+  "custom/power": {
+    "format": "󰐥",
+    "tooltip-format": "power",
+    "on-click": "rice-power panel"
+  },
+  "group/ctl": {
+    "orientation": "inherit",
+    "modules": [
+      "bluetooth",
+      "network",
+      "pulseaudio",
+      "cpu",
+      "battery"
+    ]
+  },
+  "bluetooth": {
+    "format": "󰂯",
+    "format-on": "󰂯",
+    "format-connected": "󰂱",
+    "format-off": "󰂲",
+    "format-disabled": "󰂲",
+    "tooltip-format": "{controller_alias} · {num_connections} connected",
+    "tooltip-format-connected": "{device_enumerate}",
+    "tooltip-format-enumerate-connected": "{device_alias}",
+    "tooltip-format-enumerate-connected-battery": "{device_alias} {device_battery_percentage}%",
+    "on-click": "rice-bt"
+  },
+  "network": {
+    "interval": 10,
+    "format-wifi": "{icon}",
+    "format-icons": [
+      "󰤟",
+      "󰤢",
+      "󰤥",
+      "󰤨"
+    ],
+    "format-ethernet": "󰈀",
+    "format-disconnected": "󰤯",
+    "format-disabled": "󰤮",
+    "tooltip-format-wifi": "{essid} · {signalStrength}% · {ipaddr}",
+    "tooltip-format-disconnected": "offline",
+    "on-click": "rice-wifi",
+    "on-click-right": "nm-connection-editor"
+  },
+  "pulseaudio": {
+    "format": "{icon} {volume}%",
+    "format-muted": "󰝟 {volume}%",
+    "format-icons": {
+      "default": [
+        "󰕿",
+        "󰖀",
+        "󰕾"
+      ],
+      "headphone": "󰋋"
+    },
+    "on-click": "wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle",
+    "on-click-right": "pavucontrol",
+    "scroll-step": 5,
+    "tooltip-format": "{desc}"
+  },
+  "cpu": {
+    "interval": 5,
+    "format": "󰍛 {usage}%",
+    "states": {
+      "warning": 75,
+      "critical": 90
+    },
+    "tooltip": false
+  },
+  "battery": {
+    "states": {
+      "warning": 25,
+      "critical": 12
+    },
+    "format": "{icon} {capacity}%",
+    "format-icons": [
+      "󰂎",
+      "󰁻",
+      "󰁼",
+      "󰁽",
+      "󰁾",
+      "󰁿",
+      "󰂀",
+      "󰂁",
+      "󰂂",
+      "󰁹"
+    ],
+    "format-charging": "󰂄 {capacity}%",
+    "format-plugged": "󰚥 {capacity}%",
+    "tooltip-format": "{capacity}% · {timeTo} · {power:.1f}W",
+    "on-click": "rice-battery"
+  },
+  "clock": {
+    "format": " {:%H:%M}",
+    "tooltip-format": "{:%A %d %B}",
+    "on-click": "rice-calendar"
+  }
+}

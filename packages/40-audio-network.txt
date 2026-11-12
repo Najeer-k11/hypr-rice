@@ -1,0 +1,12 @@
+# title: Audio, network, bluetooth
+# required: yes
+# about: System services the bar modules and settings pages talk to. Skip any you already have set up differently.
+pipewire | Audio server.
+pipewire-pulse | Lets PulseAudio apps (most apps) play through PipeWire.
+pipewire-alsa | Lets ALSA apps play through PipeWire.
+pipewire-jack | Lets JACK (pro-audio) apps play through PipeWire.
+pavucontrol | Volume mixer window (right-click the volume in the bar).
+networkmanager | Network service. rice-wifi and rice-settings use its nmcli tool.
+network-manager-applet | Tray icon, and the connection editor (nm-connection-editor) for VPNs / static IPs.
+bluez | Bluetooth service.
+bluez-utils | Provides bluetoothctl, used by rice-bt and rice-settings.

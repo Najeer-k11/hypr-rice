@@ -1,0 +1,56 @@
+#!/usr/bin/env bash
+# rice-lockinfo music|battery|notifications — one line of text for hyprlock's labels.
+# Prints nothing when there's nothing to show, so the label stays empty.
+esc() { sed -e 's/&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g'; }  # hyprlock labels are Pango markup
+
+# Notification ids (not the volume/brightness popups) currently shown or in mako's history.
+notification_ids() {
+    { makoctl list; makoctl history; } 2>/dev/null | awk '
+        /^Notification / { id = $2; sub(/:$/, "", id) }
+        /^  App name: /  { if ($3 != "osd") print id }' | sort -nu
+}
+
+case "$1" in
+    music)
+        [[ "$(playerctl status 2>/dev/null)" == Playing ]] || exit 0
+        line="$(playerctl metadata --format '{{artist}} · {{title}}' 2>/dev/null)"
+        line="${line# · }"
+        [[ -n "$line" ]] && printf '󰎆  %s\n' "${line:0:66}" | esc
+        ;;
+    battery)
+        for bat in /sys/class/power_supply/BAT*; do break; done   # BAT0 on most laptops, BAT1 on some
+        [[ -r "$bat/capacity" ]] || exit 0
+        pct="$(<"$bat/capacity")"; status="$(<"$bat/status")"
+        case "$status" in
+            Charging)    printf '󰂄  %s%% · charging\n' "$pct" ;;
+            Discharging)
+                # capacity 0-100 → 󰂎 󰁺 … 󰁹
+                icons=(󰂎 󰁺 󰁻 󰁼 󰁽 󰁾 󰁿 󰂀 󰂁 󰂂 󰁹)
+                icon="${icons[$((pct / 10))]}"
+                now="$(<"$bat/energy_now")"; draw="$(<"$bat/power_now")"
+                if (( draw > 500000 )); then
+                    mins=$(( now * 60 / draw ))
+                    printf '%s  %s%% · %dh %02dm left\n' "$icon" "$pct" $((mins / 60)) $((mins % 60))
+                else
+                    printf '%s  %s%%\n' "$icon" "$pct"
+                fi ;;
+            *)           printf '󰚥  %s%% · plugged in\n' "$pct" ;;
+        esac
+        ;;
+    notifications)
+        # Count what arrived since this lock began: the first call of each hyprlock
+        # records the newest id, later calls count ids above it.
+        state="${XDG_RUNTIME_DIR:-/tmp}/rice-lock-notifications"
+        pid="$(pidof -s hyprlock)"
+        read -r seen_pid baseline 2>/dev/null <"$state"
+        if [[ "$seen_pid" != "$pid" ]]; then
+            baseline="$(notification_ids | tail -1)"
+            echo "$pid ${baseline:-0}" >"$state"
+            exit 0
+        fi
+        count="$(notification_ids | awk -v b="${baseline:-0}" '$1 > b { n++ } END { print n + 0 }')"
+        (( count == 1 )) && echo "󰂚  1 new notification"
+        (( count > 1 )) && echo "󰂚  $count new notifications"
+        ;;
+esac
+exit 0

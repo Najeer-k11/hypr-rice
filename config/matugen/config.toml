@@ -1,0 +1,51 @@
+[config]
+
+# fixed terminal hues, blended toward the wallpaper
+[config.custom_colors]
+red     = { color = "#e06c75", blend = true }
+green   = { color = "#98c379", blend = true }
+yellow  = { color = "#e5c07b", blend = true }
+blue    = { color = "#61afef", blend = true }
+magenta = { color = "#c678dd", blend = true }
+cyan    = { color = "#56b6c2", blend = true }
+
+[templates.hyprland]
+input_path  = "~/.config/matugen/templates/hypr-colors.lua"
+output_path = "~/.config/hypr/colors.lua"
+post_hook   = "hyprctl reload >/dev/null"
+
+[templates.hyprlock]
+input_path  = "~/.config/matugen/templates/hyprlock-colors.conf"
+output_path = "~/.config/hypr/hyprlock-colors.conf"
+
+[templates.waybar]
+input_path  = "~/.config/matugen/templates/colors.css"
+output_path = "~/.config/waybar/colors.css"
+
+[templates.fuzzel]
+input_path  = "~/.config/matugen/templates/fuzzel-colors.ini"
+output_path = "~/.config/fuzzel/colors.ini"
+
+[templates.mako]
+input_path  = "~/.config/matugen/templates/mako"
+output_path = "~/.config/mako/config"
+post_hook   = "makoctl reload 2>/dev/null || true"
+
+[templates.kitty]
+input_path  = "~/.config/matugen/templates/kitty-colors.conf"
+output_path = "~/.config/kitty/colors.conf"
+post_hook   = "pkill -SIGUSR1 kitty || true"
+
+[templates.gtk3]
+input_path  = "~/.config/matugen/templates/gtk.css"
+output_path = "~/.config/gtk-3.0/colors.css"
+
+[templates.gtk4]
+input_path  = "~/.config/matugen/templates/gtk.css"
+output_path = "~/.config/gtk-4.0/colors.css"
+
+[templates.vscode]
+input_path  = "~/.config/matugen/templates/vscode-colors.json"
+output_path = "~/.cache/rice/vscode-colors.json"
+post_hook   = "rice-vscode-sync"
+

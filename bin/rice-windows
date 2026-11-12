@@ -1,0 +1,23 @@
+#!/usr/bin/env bash
+# rice-windows [all|ws] — fuzzel window switcher, most-recently-used first.
+#   all (default): every window on every workspace   ws: current workspace only
+scope="${1:-all}"
+sel="$(hyprctl clients -j | python3 -c '
+import json, sys
+scope = sys.argv[1]
+cur = None
+if scope == "ws":
+    import subprocess
+    cur = json.loads(subprocess.run(["hyprctl","activeworkspace","-j"],capture_output=True,text=True).stdout)["id"]
+wins = [w for w in json.load(sys.stdin) if w["mapped"] and (w["workspace"]["id"] > 0 or w["workspace"]["name"].startswith("special"))]
+wins = [w for w in wins if cur is None or w["workspace"]["id"] == cur]
+wins.sort(key=lambda w: w["focusHistoryID"])
+if len(wins) > 1 and wins[0]["focusHistoryID"] == 0:
+    wins = wins[1:] + wins[:1]   # put the current window last so Enter = previous window
+for w in wins:
+    ws = w["workspace"]["name"].replace("special:", "s:")
+    title = w["title"].replace("\n", " ")[:70]
+    cls, addr = w["class"], w["address"]
+    print(f"{ws:>3}  {cls:<14.14}  {title}\t{addr}\0icon\x1f{cls.lower()}")
+' "$scope" | fuzzel --dmenu --prompt '  ' --placeholder 'windows…' --width 64 --lines 10 --with-nth 1 --accept-nth 2 --nth-delimiter $'\t')" || exit 0
+[ -n "$sel" ] && hyprctl dispatch "hl.dsp.focus({window=\"address:$sel\"})" >/dev/null

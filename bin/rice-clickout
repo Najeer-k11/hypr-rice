@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+# rice-clickout — run on every left/right click (non-consuming Hyprland bind).
+# If a fuzzel menu is open and the click landed outside it, close it.
+pgrep -x fuzzel >/dev/null || exit 0
+hyprctl -j cursorpos | python3 -c '
+import json, sys, subprocess
+c = json.load(sys.stdin)
+layers = json.loads(subprocess.run(["hyprctl", "-j", "layers"], capture_output=True, text=True).stdout)
+for mon in layers.values():
+    for lv in mon["levels"].values():
+        for l in lv:
+            if l["namespace"] == "launcher" and l["x"] <= c["x"] < l["x"] + l["w"] and l["y"] <= c["y"] < l["y"] + l["h"]:
+                sys.exit(1)   # inside the menu: leave it alone
+' || exit 0
+pkill -x fuzzel && date +%s%N > "${XDG_RUNTIME_DIR:-/tmp}/rice-clickout"

@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+# Memory panel: usage summary + top processes by RAM; picking one offers to end it.
+read -r tot used avail < <(free -b | awk '/^Mem:/{print $2,$3,$7}')
+read -r stot sused < <(free -b | awk '/^Swap:/{print $2,$3}')
+h() { numfmt --to=iec --format='%.1f' "$1"; }
+pct=$(( used * 100 / tot ))
+bar() { local n=$(( $1 / 5 )); printf '%*s' "$n" '' | tr ' ' '█'; printf '%*s' $((20-n)) '' | tr ' ' '░'; }
+procs="$(ps -eo pid=,rss=,comm= --sort=-rss | head -n 10 | while read -r pid rss comm; do
+    printf '  %-20.20s %8s\t%s\n' "$comm" "$(numfmt --to=iec --format='%.0f' $((rss*1024)))" "$pid"; done)"
+menu="$(printf '󰍛  %s  %s%%\t-\n' "$(bar $pct)" "$pct"
+        printf '   used %s / %s   free %s\t-\n' "$(h $used)" "$(h $tot)" "$(h $avail)"
+        (( stot > 0 )) && printf '   swap %s / %s\t-\n' "$(h $sused)" "$(h $stot)"
+        printf '%s\n' "$procs")"
+pid="$(printf '%s\n' "$menu" | rice-panel '󰍛  ' 'memory · pick a process to end it' 46 \
+        --with-nth 1 --accept-nth 2 --nth-delimiter $'\t' --only-match)" || exit 0
+[[ "$pid" =~ ^[0-9]+$ ]] || exit 0
+name="$(ps -o comm= -p "$pid")" || exit 0
+ok="$(printf '  no, keep it\n󰆴  yes, end %s (%s)\n' "$name" "$pid" | rice-panel '  ' "end $name?" 34 --only-match)" || exit 0
+[[ "$ok" == *yes* ]] && kill "$pid" && notify-send -a memory 'Process ended' "$name ($pid)"

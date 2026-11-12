@@ -1,0 +1,363 @@
+#!/usr/bin/env python3
+"""rice-wallpicker — slanted wallpaper carousel floating over the desktop. Applies via `wall set`.
+
+  ←/→  h/l  scroll   move            Enter / Space / double-click   apply + close
+  Home/End           first / last    Shift+Enter                    apply, stay open
+  r                  jump to random  Esc / q                        close
+Running it again while it is open closes it (toggle).
+"""
+import hashlib, json, os, random, subprocess, sys, threading, warnings
+from pathlib import Path
+
+# GL renderer: GTK4's Vulkan default wakes the suspended NVIDIA dGPU (~2 s open delay).
+os.environ.setdefault("GSK_RENDERER", "gl")
+# The desktop portal check costs ~420 ms of GTK startup, and nothing here uses portals.
+os.environ.setdefault("GDK_DEBUG", "no-portals")
+import gi
+gi.require_version("Gtk", "4.0")
+gi.require_version("Gdk", "4.0")
+from gi.repository import Gdk, GdkPixbuf, GLib, Gtk
+
+WALL_DIR = Path(os.environ.get("WALL_DIR", Path.home() / "Pictures/Wallpapers"))
+STATE    = Path.home() / ".cache/rice/current_wallpaper"
+THUMBS   = Path.home() / ".cache/rice/thumbs"
+COLORS   = Path.home() / ".config/waybar/colors.css"   # matugen palette (@define-color …)
+EXTS     = {".jpg", ".jpeg", ".png", ".webp"}
+
+CARD_W, CARD_H = 300, 200      # bounding box of each parallelogram
+SLANT          = 56            # horizontal shift between top and bottom edge
+GAP            = 12            # gap between neighbouring slanted edges
+STEP           = CARD_W - SLANT + GAP   # distance between neighbouring cards (they interlock)
+VISIBLE        = 5             # cards across (odd; shrinks on small screens)
+BORDER         = 3
+
+CSS = """
+window.wallpicker, window.wallpicker > * { background: transparent; box-shadow: none; }
+.card {
+  background: none; border: none; box-shadow: none;
+  opacity: 0.5;
+  transform: scale(0.86);
+  transition: transform 200ms cubic-bezier(.2,.9,.1,1), opacity 200ms ease;
+}
+.card.active { opacity: 1; transform: scale(1.0); }
+.card:hover:not(.active) { opacity: 0.8; }
+.name, .meta { font-family: "GeistMono Nerd Font"; text-shadow: 0 1px 3px rgba(0,0,0,0.9); }
+.name { font-size: 14px; font-weight: 700; color: @on_surface; }
+.meta { font-size: 11px; color: @on_surface_variant; }
+"""
+
+
+def monitor_width():
+    """Logical width of the focused monitor (Hyprland), so the carousel never overflows."""
+    try:
+        mons = json.loads(subprocess.check_output(["hyprctl", "monitors", "-j"], timeout=1))
+        m = next(m for m in mons if m["focused"])
+        rot = m.get("transform", 0) % 2
+        return int((m["height"] if rot else m["width"]) / m["scale"])
+    except Exception:
+        return 1366
+
+
+def palette_color(name, fallback):
+    try:
+        for line in COLORS.read_text().splitlines():
+            parts = line.replace(";", "").split()
+            if len(parts) == 3 and parts[0] == "@define-color" and parts[1] == name:
+                c = Gdk.RGBA()
+                if c.parse(parts[2]):
+                    return c
+    except OSError:
+        pass
+    c = Gdk.RGBA(); c.parse(fallback)
+    return c
+
+
+def wallpapers():
+    if not WALL_DIR.is_dir():
+        return []
+    files = [p for p in WALL_DIR.rglob("*") if p.suffix.lower() in EXTS and p.is_file()
+             and len(p.relative_to(WALL_DIR).parts) <= 2]
+    return sorted(files, key=lambda p: str(p.relative_to(WALL_DIR)).lower())
+
+
+def thumb_for(path: Path) -> Path:
+    st = path.stat()
+    key = hashlib.sha1(f"{path}:{st.st_mtime_ns}:{st.st_size}:{CARD_W}x{CARD_H}".encode()).hexdigest()[:16]
+    out = THUMBS / f"{key}.jpg"
+    if not out.exists():
+        THUMBS.mkdir(parents=True, exist_ok=True)
+        tmp = out.with_suffix(".tmp.jpg")
+        w, h = CARD_W * 2, CARD_H * 2   # 2x for HiDPI
+        subprocess.run(["magick", f"{path}[0]", "-auto-orient", "-thumbnail", f"{w}x{h}^",
+                        "-gravity", "center", "-extent", f"{w}x{h}", "-quality", "86", str(tmp)],
+                       check=True, capture_output=True)
+        tmp.rename(out)
+    return out
+
+
+class Card(Gtk.DrawingArea):
+    """One parallelogram: image clipped to the slanted shape, accent outline when active."""
+
+    def __init__(self, accent, dot):
+        super().__init__(css_classes=["card"])
+        self.set_size_request(CARD_W, CARD_H)
+        self.pixbuf = None
+        self.active = False
+        self.current = False
+        self.accent, self.dot = accent, dot
+        self.set_draw_func(self._draw)
+
+    @staticmethod
+    def _shape(cr, w, h, inset=0.0):
+        cr.move_to(SLANT + inset, inset)
+        cr.line_to(w - inset, inset)
+        cr.line_to(w - SLANT - inset, h - inset)
+        cr.line_to(inset, h - inset)
+        cr.close_path()
+
+    def _draw(self, area, cr, w, h):
+        self._shape(cr, w, h)
+        cr.save()
+        cr.clip()
+        if self.pixbuf:
+            pw, ph = self.pixbuf.get_width(), self.pixbuf.get_height()
+            k = max(w / pw, h / ph)
+            cr.translate((w - pw * k) / 2, (h - ph * k) / 2)
+            cr.scale(k, k)
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore", DeprecationWarning)
+                Gdk.cairo_set_source_pixbuf(cr, self.pixbuf, 0, 0)
+            cr.paint()
+        else:
+            cr.set_source_rgba(1, 1, 1, 0.06)
+            cr.paint()
+        cr.restore()
+
+        if self.active:
+            self._shape(cr, w, h, BORDER / 2)
+            cr.set_line_width(BORDER)
+            cr.set_line_join(1)  # round
+            Gdk.cairo_set_source_rgba(cr, self.accent)
+            cr.stroke()
+        if self.current:   # small dot near the top-right corner
+            cr.arc(w - 20, 16, 5, 0, 6.2832)
+            Gdk.cairo_set_source_rgba(cr, self.dot)
+            cr.fill_preserve()
+            cr.set_source_rgba(0, 0, 0, 0.55)
+            cr.set_line_width(1.5)
+            cr.stroke()
+
+    def set_state(self, active=None, current=None):
+        if active is not None:
+            self.active = active
+            (self.add_css_class if active else self.remove_css_class)("active")
+        if current is not None:
+            self.current = current
+        self.queue_draw()
+
+
+class Picker(Gtk.ApplicationWindow):
+    def __init__(self, app):
+        super().__init__(application=app, title="Wallpapers")
+        self.add_css_class("wallpicker")
+        self.files = wallpapers()
+        self.cards = []
+        self.index = 0
+        self.anim_id = None
+        try:
+            self.current = Path(STATE.read_text().strip()).resolve()
+        except OSError:
+            self.current = None
+
+        avail = int(monitor_width() * 0.92)
+        n = VISIBLE
+        while n > 1 and (n - 1) * STEP + CARD_W > avail:
+            n -= 2
+        win_w = min(avail, (n - 1) * STEP + CARD_W + 2 * SLANT)
+        self.set_default_size(win_w, CARD_H + 80)
+        self.set_resizable(False)
+        self.set_decorated(False)
+
+        col = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
+        self.set_child(col)
+
+        self.scroller = Gtk.ScrolledWindow(hscrollbar_policy=Gtk.PolicyType.EXTERNAL,
+                                           vscrollbar_policy=Gtk.PolicyType.NEVER)
+        self.scroller.set_size_request(win_w, CARD_H + 6)
+        side = (win_w - CARD_W) // 2   # lets the first/last card sit in the centre
+        self.side = side
+        self.strip = Gtk.Fixed()   # absolute positions so the slanted cards can interlock
+        self.strip.set_size_request(2 * side + max(len(self.files) - 1, 0) * STEP + CARD_W, CARD_H + 6)
+        self.scroller.set_child(self.strip)
+        col.append(self.scroller)
+
+        self.name = Gtk.Label(css_classes=["name"])
+        self.meta = Gtk.Label(css_classes=["meta"])
+        col.append(self.name)
+        col.append(self.meta)
+
+        accent = palette_color("primary", "#9fcafd")
+        dot = palette_color("on_surface", "#e1e2e8")
+        if not self.files:
+            self.name.set_text(f"no wallpapers in {WALL_DIR}")
+        for i, f in enumerate(self.files):
+            card = Card(accent, dot)
+            card.set_state(current=bool(self.current and f.resolve() == self.current))
+            click = Gtk.GestureClick()
+            click.connect("pressed", self._on_click, i)
+            card.add_controller(click)
+            self.cards.append(card)
+            self.strip.put(card, side + i * STEP, 3)
+            if card.current:
+                self.index = i
+
+        keys = Gtk.EventControllerKey()
+        keys.connect("key-pressed", self._on_key)
+        self.add_controller(keys)
+        scroll = Gtk.EventControllerScroll(flags=Gtk.EventControllerScrollFlags.BOTH_AXES |
+                                           Gtk.EventControllerScrollFlags.DISCRETE)
+        scroll.connect("scroll", self._on_scroll)
+        self.scroller.add_controller(scroll)
+
+        self.closing = False
+        self.connect("close-request", self._on_close)
+        self.connect("map", lambda *_: GLib.idle_add(self._initial))
+        threading.Thread(target=self._load_thumbs, daemon=True).start()
+
+    def _initial(self):
+        self.select(self.index, animate=False)
+        # close when focus moves elsewhere (hooked up only once we're on screen)
+        self.connect("notify::is-active", lambda *_: self.is_active() or self.close())
+        return False
+
+    def _on_close(self, *_):
+        if not self.closing:              # quit the whole app so no stale instance lingers
+            self.closing = True
+            GLib.idle_add(self.get_application().quit)
+        return False
+
+    # ---------------------------------------------------------------- thumbs
+    def _load_thumbs(self):
+        order = sorted(range(len(self.files)), key=lambda i: abs(i - self.index))
+        for i in order:
+            try:
+                pb = GdkPixbuf.Pixbuf.new_from_file(str(thumb_for(self.files[i])))
+            except Exception:
+                continue
+            GLib.idle_add(self._set_thumb, i, pb)
+
+    def _set_thumb(self, i, pb):
+        self.cards[i].pixbuf = pb
+        self.cards[i].queue_draw()
+        return False
+
+    # ------------------------------------------------------------- behaviour
+    def select(self, i, animate=True):
+        if not self.files:
+            return
+        i = max(0, min(i, len(self.files) - 1))
+        self.cards[self.index].set_state(active=False)
+        self.index = i
+        self.cards[i].set_state(active=True)
+        f = self.files[i]
+        self.name.set_text(f.stem)
+        cur = "  ·  current" if self.cards[i].current else ""
+        self.meta.set_text(f"{i + 1} / {len(self.files)}{cur}")
+        self._scroll_to(i * STEP, animate)
+
+    def _scroll_to(self, target, animate):
+        adj = self.scroller.get_hadjustment()
+        if self.anim_id:
+            self.remove_tick_callback(self.anim_id)
+            self.anim_id = None
+        if not animate:
+            adj.set_value(target)
+            return
+        start, t0, dur = adj.get_value(), None, 0.22
+
+        def tick(widget, clock):
+            nonlocal t0
+            now = clock.get_frame_time() / 1e6
+            t0 = t0 or now
+            p = min((now - t0) / dur, 1.0)
+            adj.set_value(start + (target - start) * (1 - (1 - p) ** 3))
+            if p >= 1:
+                self.anim_id = None
+                return GLib.SOURCE_REMOVE
+            return GLib.SOURCE_CONTINUE
+        self.anim_id = self.add_tick_callback(tick)
+
+    def apply(self, close):
+        if not self.files:
+            return
+        f = self.files[self.index]
+        subprocess.Popen(["wall", "set", str(f)], start_new_session=True,
+                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        if close:
+            self.close()
+            return
+        self.current = f.resolve()
+        for j, c in enumerate(self.cards):
+            c.set_state(current=(j == self.index))
+        self.select(self.index, animate=False)
+
+    def _on_click(self, gesture, n, x, y, i):
+        if n == 2 and i == self.index:
+            self.apply(close=True)
+        else:
+            self.select(i)
+
+    def _on_key(self, ctl, keyval, code, state):
+        name = Gdk.keyval_name(keyval) or ""
+        shift = bool(state & Gdk.ModifierType.SHIFT_MASK)
+        if name in ("Escape", "q"):
+            self.close()
+        elif name in ("Left", "h", "a", "Up", "k"):
+            self.select(self.index - 1)
+        elif name in ("Right", "l", "d", "Down", "j"):
+            self.select(self.index + 1)
+        elif name == "Home":
+            self.select(0)
+        elif name == "End":
+            self.select(len(self.files) - 1)
+        elif name in ("r", "R") and len(self.files) > 1:
+            self.select(random.choice([n for n in range(len(self.files)) if n != self.index]))
+        elif name in ("Return", "KP_Enter", "space"):
+            self.apply(close=not shift)
+        else:
+            return False
+        return True
+
+    def _on_scroll(self, ctl, dx, dy):
+        step = dx if abs(dx) > abs(dy) else dy
+        if step:
+            self.select(self.index + (1 if step > 0 else -1))
+        return True
+
+
+def main():
+    app = Gtk.Application(application_id="rice.wallpicker")
+    state = {"win": None, "css": False}
+
+    def activate(app):
+        win = state["win"]
+        if win is not None and win.get_visible():   # launched again while open -> close
+            win.close()
+            return
+        if not state["css"]:
+            css = Gtk.CssProvider()
+            palette = COLORS.read_text() if COLORS.exists() else (
+                "@define-color on_surface #e1e2e8; @define-color on_surface_variant #c3c7cf;")
+            css.load_from_string(palette + CSS)
+            Gtk.StyleContext.add_provider_for_display(Gdk.Display.get_default(), css,
+                                                      Gtk.STYLE_PROVIDER_PRIORITY_USER)
+            state["css"] = True
+        state["win"] = Picker(app)
+        state["win"].present()
+
+    app.connect("activate", activate)
+    return app.run(sys.argv[:1])
+
+
+if __name__ == "__main__":
+    sys.exit(main())

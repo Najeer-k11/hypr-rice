@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+# rice-toy pipes
+# Toggles a floating kitty "widget" window (class rice.<name>). Window rules in hyprland.lua.
+name=$1
+kill_class() {
+    hyprctl clients -j | python -c 'import json,sys; [print(c["pid"]) for c in json.load(sys.stdin) if c["class"]==sys.argv[1]]' "rice.$1" | xargs -r kill
+}
+running() { hyprctl clients -j | python -c 'import json,sys; sys.exit(not any(c["class"]==sys.argv[1] for c in json.load(sys.stdin)))' "rice.$1"; }
+launch() { # class, kitty -o opts..., -- cmd
+    local cls=$1; shift
+    setsid -f kitty --class "rice.$cls" -o confirm_os_window_close=0 "$@" >/dev/null 2>&1
+}
+
+case $name in
+    pipes)
+        running pipes && { kill_class pipes; exit; }
+        launch pipes -o background_opacity=0.92 -e pipes.sh -p 3 -t 1 -R -r 4000 ;;
+    *) echo "usage: rice-toy pipes" >&2; exit 1 ;;
+esac

@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+# Power-profile panel (power-profiles-daemon).  `rice-profile status` prints JSON for waybar.
+icon() { case "$1" in performance) echo 󰓅;; power-saver) echo 󰾆;; *) echo 󰾅;; esac; }
+cur="$(powerprofilesctl get)"
+if [[ "$1" == status ]]; then
+    printf '{"text":"%s","tooltip":"power profile: %s","class":"%s","alt":"%s"}\n' "$(icon "$cur")" "$cur" "$cur" "$cur"; exit 0
+fi
+opts="$(powerprofilesctl list | grep -oE '^\*? *[a-z-]+:' | tr -d '*: ' | while read -r p; do
+    printf '%s %s  %s\n' "$([[ $p == "$cur" ]] && echo ● || echo ' ')" "$(icon "$p")" "$p"; done)"
+c="$(printf '%s\n' "$opts" | rice-panel '󰾅  ' "current: $cur" 28 --only-match)" || exit 0
+p="${c##* }"
+powerprofilesctl set "$p" && notify-send -a power -t 1500 'Power profile' "$p"
+pkill -RTMIN+8 waybar

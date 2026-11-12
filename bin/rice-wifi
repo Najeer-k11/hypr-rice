@@ -1,0 +1,41 @@
+#!/usr/bin/env bash
+# Wi-Fi panel: toggle radio, rescan, connect/disconnect, password prompt for new networks.
+panel() { rice-panel "$@"; }
+radio="$(nmcli -t radio wifi)"
+if [[ "$radio" != enabled ]]; then
+    c="$(printf '󰖩  turn wi-fi on\n' | panel '󰖪  ' 'wi-fi is off' 30)" || exit 0
+    nmcli radio wifi on; notify-send -a network 'Wi-Fi' 'turned on'; exit 0
+fi
+[[ "$1" == rescan ]] && nmcli dev wifi rescan 2>/dev/null && sleep 2
+cur="$(nmcli -t -f ACTIVE,SSID dev wifi | awk -F: '$1=="yes"{print $2; exit}')"
+icon() { (( $1 >= 75 )) && echo 󰤨 || { (( $1 >= 50 )) && echo 󰤥; } || { (( $1 >= 25 )) && echo 󰤢; } || echo 󰤟; }
+nets="$(nmcli -t -f IN-USE,SIGNAL,SECURITY,SSID dev wifi list --rescan no 2>/dev/null \
+    | awk -F: '$4!="" && !seen[$4]++' | while IFS=: read -r use sig sec ssid; do
+        lock=$([[ -n "$sec" && "$sec" != "--" ]] && echo '' || echo ' ')
+        mark=$([[ "$use" == '*' ]] && echo '●' || echo ' ')
+        printf '%s %s  %-28.28s %s %3s%%\n' "$mark" "$(icon "$sig")" "$ssid" "$lock" "$sig"
+    done)"
+menu="$(printf '%s\n' "$nets"; printf '󰑐  rescan\n󰖪  turn wi-fi off\n  network settings\n')"
+c="$(printf '%s\n' "$menu" | panel '󰤨  ' "${cur:+connected: $cur}" 48)" || exit 0
+case "$c" in
+    *"rescan")          exec "$0" rescan ;;
+    *"turn wi-fi off")  nmcli radio wifi off; notify-send -a network 'Wi-Fi' 'turned off' ;;
+    *"network settings") nm-connection-editor & ;;
+    *)
+        ssid="$(sed -E 's/^. \S+  //; s/ +(|  ) +[0-9]+%$//; s/ +$//' <<<"$c")"
+        [[ -z "$ssid" ]] && exit 0
+        if [[ "$ssid" == "$cur" ]]; then
+            nmcli con down id "$ssid" >/dev/null && notify-send -a network 'Wi-Fi' "disconnected from $ssid"; exit 0
+        fi
+        notify-send -a network -t 2000 'Wi-Fi' "connecting to $ssid…"
+        if nmcli -t -f NAME con show | grep -qxF "$ssid"; then
+            out="$(nmcli con up id "$ssid" 2>&1)"
+        elif [[ "$c" == *""* ]]; then
+            pw="$(: | panel '  ' "password for $ssid" 40 --password)" || exit 0
+            out="$(nmcli dev wifi connect "$ssid" password "$pw" 2>&1)"
+        else
+            out="$(nmcli dev wifi connect "$ssid" 2>&1)"
+        fi
+        if [[ $? -eq 0 ]]; then notify-send -a network 'Wi-Fi' "connected to $ssid"
+        else notify-send -a network -u critical 'Wi-Fi failed' "${out##*Error: }"; fi ;;
+esac

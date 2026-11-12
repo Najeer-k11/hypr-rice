@@ -1,0 +1,42 @@
+#!/usr/bin/env bash
+# Bluetooth panel: power, scan, connect/disconnect paired devices, pair new ones.
+panel() { rice-panel "$@"; }
+powered() { bluetoothctl show | grep -q 'Powered: yes'; }
+if ! powered; then
+    printf '󰂯  turn bluetooth on\n' | panel '󰂲  ' 'bluetooth is off' 30 >/dev/null || exit 0
+    rfkill unblock bluetooth; bluetoothctl power on >/dev/null; notify-send -a bluetooth 'Bluetooth' 'turned on'; exit 0
+fi
+if [[ "$1" == scan ]]; then
+    notify-send -a bluetooth -t 6000 'Bluetooth' 'scanning for 8s…'
+    bluetoothctl --timeout 8 scan on >/dev/null
+fi
+devs="$(bluetoothctl devices | while read -r _ mac name; do
+        info="$(bluetoothctl info "$mac")"
+        grep -q 'Name:' <<<"$info" || continue
+        con=$(grep -q 'Connected: yes' <<<"$info" && echo '●' || echo ' ')
+        pair=$(grep -q 'Paired: yes' <<<"$info" && echo '' || echo '  new')
+        bat="$(awk -F'[()]' '/Battery Percentage/{print "  "$2"%"}' <<<"$info")"
+        ic="$(awk '/Icon:/{print $2}' <<<"$info")"
+        case "$ic" in audio-head*) i=󰋋;; audio*) i=󰓃;; input-mouse) i=󰍽;; input-keyboard) i=󰌌;; input-gaming) i=󰊴;; phone) i=󰏲;; *) i=󰂯;; esac
+        printf '%s %s  %-26.26s%s%s\t%s\n' "$con" "$i" "$name" "$bat" "$pair" "$mac"
+    done | sort -r)"
+c="$( [[ -n "$devs" ]] && printf '%s\n' "$devs"; printf '󰂰  scan for devices\n󰂲  turn bluetooth off\n')"
+c="$(printf '%s\n' "$c" | panel '󰂯  ' 'devices' 44 --with-nth 1 --accept-nth 2 --nth-delimiter $'\t')" || exit 0
+case "$c" in
+    *"scan for devices")   exec "$0" scan ;;
+    *"turn bluetooth off") bluetoothctl power off >/dev/null; notify-send -a bluetooth 'Bluetooth' 'turned off' ;;
+    *:*:*)
+        mac="$c"; name="$(bluetoothctl info "$mac" | awk -F': ' '/Name:/{print $2}')"
+        info="$(bluetoothctl info "$mac")"
+        if grep -q 'Connected: yes' <<<"$info"; then
+            bluetoothctl disconnect "$mac" >/dev/null && notify-send -a bluetooth 'Bluetooth' "disconnected $name"
+        else
+            notify-send -a bluetooth -t 3000 'Bluetooth' "connecting $name…"
+            if ! grep -q 'Paired: yes' <<<"$info"; then
+                bluetoothctl --timeout 15 pair "$mac" >/dev/null; bluetoothctl trust "$mac" >/dev/null
+            fi
+            if bluetoothctl --timeout 10 connect "$mac" | grep -q 'Connection successful'; then
+                notify-send -a bluetooth 'Bluetooth' "connected $name"
+            else notify-send -a bluetooth -u critical 'Bluetooth' "couldn't connect $name"; fi
+        fi ;;
+esac

@@ -1,0 +1,5 @@
+# title: Hardware extras
+# required: no
+# about: Only useful on matching hardware. Each one is asked separately. The setup works without them.
+asusctl | ASUS laptops only: keyboard RGB, battery charge limit, fan profiles (rice-settings power and keyboard pages, rice-battery).
+openrgb | RGB keyboards on non-ASUS machines (rice-settings keyboard page, "follow wallpaper").

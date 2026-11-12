@@ -1,0 +1,15 @@
+-- local.lua — your machine-specific additions. Copy this file to local.lua and edit.
+-- hyprland.lua loads it last, so anything here overrides the defaults, and the installer
+-- never overwrites it.
+
+-- A fixed mode and scale for the laptop panel (rice-settings → display can also do this):
+-- hl.monitor({ output = "eDP-1", mode = "1920x1080@144", position = "0x0", scale = 1.2 })
+
+-- Another keyboard layout:
+-- hl.config({ input = { kb_layout = "us,de", kb_options = "grp:alt_shift_toggle" } })
+
+-- Extra binds:
+-- hl.bind("SUPER + O", hl.dsp.exec_cmd("obsidian"))
+
+-- Extra window rules:
+-- hl.window_rule({ name = "float-calc", match = { class = "^(org.gnome.Calculator)$" }, float = true, center = true })

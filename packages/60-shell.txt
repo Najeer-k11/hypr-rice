@@ -1,0 +1,6 @@
+# title: Shell
+# required: no
+# about: The terminal experience. kitty.conf starts zsh; change `shell zsh` there if you skip this.
+zsh | Shell. home/.zshrc is a plugin-free config whose prompt uses the terminal palette, so it follows the wallpaper.
+zsh-completions | Extra tab-completions for zsh.
+fastfetch | System info summary (config/fastfetch/config.jsonc).

@@ -1,0 +1,547 @@
+#!/usr/bin/env python3
+"""rice-overview — workspace overview with live window thumbnails (SUPER+Tab).
+
+  rice-overview     open the overview, or close it if it's already open
+
+  type              filter windows by title or app
+  arrows / Tab      move the selection     Enter  go to the selection
+  click             go to a window or workspace
+  drag              move a window to another workspace
+  Esc               clear the search, then close
+
+Thumbnails come from `grim -T`, which also captures windows on hidden workspaces.
+Special workspaces (scratch) are not shown.
+"""
+import json
+import os
+import subprocess
+import threading
+import time
+from pathlib import Path
+
+# GL renderer: GTK4's Vulkan default wakes the suspended NVIDIA dGPU (~2 s open delay).
+os.environ.setdefault("GSK_RENDERER", "gl")
+# The desktop portal check costs ~440 ms of GTK startup, and nothing here uses portals.
+os.environ.setdefault("GDK_DEBUG", "no-portals")
+import gi
+
+gi.require_version("Gtk", "4.0")
+gi.require_version("Gdk", "4.0")
+gi.require_version("Graphene", "1.0")
+gi.require_version("GdkPixbuf", "2.0")
+from gi.repository import Gdk, GdkPixbuf, GLib, GObject, Graphene, Gtk  # noqa: E402
+
+APP_ID = "rice.overview"
+COLORS = Path.home() / ".config/waybar/colors.css"
+WALLPAPER = Path.home() / ".cache/rice/current_wallpaper"
+ALWAYS_SHOWN = range(1, 6)  # the bar's persistent workspaces
+MAX_WORKSPACE = 10
+FIRST_PASS_WORKERS = 4
+
+CSS = """
+window.overview { background: alpha(@surface, 0.96); }
+.root { font-family: "GeistMono Nerd Font"; color: @on_surface; padding: 24px; }
+entry.search { background: @surface_container; color: @on_surface; border: 1px solid @outline_variant;
+               border-radius: 10px; min-height: 34px; padding: 0 12px; font-size: 13px; box-shadow: none; outline: none; }
+entry.search:focus-within { border-color: @primary; }
+.status { font-size: 12px; color: @on_surface_variant; min-height: 18px; }
+.card { border-radius: 10px; border: 2px solid @outline_variant; background: @surface_container; }
+.card.active { border-color: @primary; }
+.card.hover-drop { border-color: @tertiary; }
+.card:hover { border-color: @on_surface_variant; }
+.card.active:hover { border-color: @primary; }
+.card.sel { border-color: @primary; }
+.card.dim { opacity: 0.35; }
+.card-num { background: alpha(@surface, 0.82); color: @on_surface; font-size: 11px; font-weight: 700;
+            border-radius: 6px; padding: 2px 8px; margin: 6px; }
+.card.active .card-num { background: @primary; color: @on_primary; }
+.win { border-radius: 6px; border: 2px solid alpha(@outline_variant, 0.9); background: @surface_container_high; }
+.win:hover { border-color: @on_surface_variant; }
+.win.sel { border-color: @primary; }
+.win.dim { opacity: 0.2; }
+"""
+
+
+def hypr_json(what):
+    out = subprocess.run(["hyprctl", what, "-j"], capture_output=True, text=True, check=False).stdout
+    try:
+        return json.loads(out)
+    except ValueError:
+        return {} if what == "activeworkspace" else []
+
+
+def dispatch(lua):
+    subprocess.run(["hyprctl", "dispatch", lua], capture_output=True, check=False)
+
+
+def list_windows():
+    wins = [c for c in hypr_json("clients")
+            if c.get("mapped") and c["class"] != APP_ID and c["workspace"]["id"] > 0]
+    # back to front: tiled, then floating, with the most recently used on top
+    wins.sort(key=lambda c: (c["floating"], -c["focusHistoryID"]))
+    return wins
+
+
+def capture(stable_id, scale):
+    """Return (width, height, rgb bytes) for one window, or None if it can't be captured."""
+    try:
+        data = subprocess.run(["grim", "-T", str(stable_id), "-s", f"{scale:.3f}", "-t", "ppm", "-"],
+                              capture_output=True, timeout=3, check=False).stdout
+    except subprocess.TimeoutExpired:
+        return None
+    if not data.startswith(b"P6\n"):
+        return None
+    try:
+        _magic, size, _maxval, pixels = data.split(b"\n", 3)
+        width, height = map(int, size.split())
+    except ValueError:
+        return None
+    return (width, height, pixels) if len(pixels) == width * height * 3 else None
+
+
+class Thumb(Gtk.Widget):
+    """Draws a texture at exactly the requested size; Gtk.Picture would grow to the texture's."""
+
+    def __init__(self, width, height):
+        super().__init__()
+        self.w, self.h = width, height
+        self.texture = None
+
+    def do_measure(self, orientation, _for_size):
+        size = self.w if orientation == Gtk.Orientation.HORIZONTAL else self.h
+        return size, size, -1, -1
+
+    def do_snapshot(self, snapshot):
+        if self.texture:
+            rect = Graphene.Rect().init(0, 0, self.get_width(), self.get_height())
+            snapshot.append_texture(self.texture, rect)
+
+    def set_texture(self, texture):
+        self.texture = texture
+        self.queue_draw()
+
+
+class Overview:
+    def __init__(self, app):
+        self.app = app
+        self.after_close = None
+        self.running = True
+        self.dragging = False
+        self.textures = {}
+        self.thumbs = {}  # stableId -> [Thumb, placeholder icon]
+        self.targets = []  # in keyboard order: {"win": client or None, "ws": id, "widget": widget, "card": card}
+        self.selected = 0
+        self.columns = 3
+
+        prov = Gtk.CssProvider()
+        colors = COLORS.read_text() if COLORS.is_file() else ""
+        prov.load_from_string(colors + CSS)
+        Gtk.StyleContext.add_provider_for_display(
+            Gdk.Display.get_default(), prov, Gtk.STYLE_PROVIDER_PRIORITY_USER)
+
+        self.monitors = {m["name"]: m for m in hypr_json("monitors")}
+        focused = next((m for m in self.monitors.values() if m.get("focused")), None)
+        scale = focused["scale"] if focused else 1
+        self.screen_w = focused["width"] / scale if focused else 1600
+        self.screen_h = focused["height"] / scale if focused else 900
+        self.active_ws = hypr_json("activeworkspace").get("id", 1)
+        self.windows = list_windows()
+        self.wallpaper = None
+        self.wallpaper_width = 0
+
+        win = self.win = Gtk.ApplicationWindow(application=app, title="overview")
+        win.add_css_class("overview")
+        win.set_decorated(False)
+        win.set_default_size(int(self.screen_w), int(self.screen_h))
+
+        self.root = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
+        self.root.add_css_class("root")
+        win.set_child(self.root)
+
+        self.search = Gtk.Entry(placeholder_text="Search windows", halign=Gtk.Align.CENTER)
+        self.search.add_css_class("search")
+        self.search.set_size_request(420, -1)
+        self.search.connect("changed", self.on_search)
+        self.root.append(self.search)
+
+        self.status = Gtk.Label(halign=Gtk.Align.CENTER, ellipsize=3, max_width_chars=90)
+        self.status.add_css_class("status")
+        self.root.append(self.status)
+
+        self.grid_holder = Gtk.Box(hexpand=True, vexpand=True, halign=Gtk.Align.CENTER, valign=Gtk.Align.CENTER)
+        self.root.append(self.grid_holder)
+        self.rebuild()
+
+        keys = Gtk.EventControllerKey()
+        keys.set_propagation_phase(Gtk.PropagationPhase.CAPTURE)
+        keys.connect("key-pressed", self.on_key)
+        win.add_controller(keys)
+
+        click = Gtk.GestureClick()
+        click.connect("released", self.on_click)
+        win.add_controller(click)
+        win.connect("notify::is-active", self.on_active)
+
+        win.present()
+        self.search.grab_focus()
+        threading.Thread(target=self.capture_loop, daemon=True).start()
+
+    # ------------------------------------------------------------ layout ----
+    def workspace_ids(self):
+        used = {c["workspace"]["id"] for c in self.windows}
+        ids = set(ALWAYS_SHOWN) | used | {self.active_ws}
+        free = [i for i in range(1, MAX_WORKSPACE + 1) if i not in used]
+        if free and all(i in used for i in ALWAYS_SHOWN):  # keep an empty card to drag windows onto
+            ids.add(free[0])
+        return sorted(ids)
+
+    def card_size(self, count):
+        self.columns = 3 if count <= 6 else 4
+        rows = -(-count // self.columns)
+        gap = 14
+        avail_w = self.screen_w - 48 - gap * (self.columns - 1)
+        avail_h = self.screen_h - 48 - 34 - 18 - 20 - gap * (rows - 1)
+        return min(avail_w / self.columns, avail_h / rows * self.screen_w / self.screen_h)
+
+    def load_wallpaper(self, width):
+        if self.wallpaper_width == width:
+            return self.wallpaper
+        self.wallpaper_width = width
+        try:
+            pix = GdkPixbuf.Pixbuf.new_from_file_at_scale(WALLPAPER.read_text().strip(), int(width * 1.5), -1, True)
+            self.wallpaper = Gdk.Texture.new_for_pixbuf(pix)
+        except (OSError, GLib.Error):
+            self.wallpaper = None
+        return self.wallpaper
+
+    def rebuild(self):
+        keep = self.current_address()
+        while (child := self.grid_holder.get_first_child()):
+            self.grid_holder.remove(child)
+        self.thumbs = {}
+        self.targets = []
+
+        ids = self.workspace_ids()
+        card_w = int(self.card_size(len(ids)))
+        card_h = int(card_w * self.screen_h / self.screen_w)
+        self.card_scale = card_w / self.screen_w
+        grid = Gtk.Grid(row_spacing=14, column_spacing=14)
+        for i, ws in enumerate(ids):
+            grid.attach(self.make_card(ws, card_w, card_h), i % self.columns, i // self.columns, 1, 1)
+        self.grid_holder.append(grid)
+
+        self.selected = 0
+        for i, t in enumerate(self.targets):
+            if t["win"] and (t["win"]["address"] == keep if keep else t["win"]["focusHistoryID"] == 0):
+                self.selected = i
+                break
+        else:
+            for i, t in enumerate(self.targets):
+                if t["ws"] == self.active_ws:
+                    self.selected = i
+                    break
+        self.on_search(self.search)
+
+    def make_card(self, ws, card_w, card_h):
+        card = Gtk.Overlay()
+        card.add_css_class("card")
+        card.set_overflow(Gtk.Overflow.HIDDEN)
+        if ws == self.active_ws:
+            card.add_css_class("active")
+        card.pick_target = {"ws": ws, "win": None}
+        base = Gtk.Box()
+        base.set_size_request(card_w, card_h)
+        card.set_child(base)
+
+        texture = self.load_wallpaper(card_w)
+        if texture:
+            pic = Gtk.Picture.new_for_paintable(texture)
+            pic.set_content_fit(Gtk.ContentFit.COVER)
+            pic.set_can_shrink(True)
+            card.add_overlay(pic)
+
+        fixed = Gtk.Fixed()
+        card.add_overlay(fixed)
+        mine = [c for c in self.windows if c["workspace"]["id"] == ws]
+        for c in mine:
+            self.add_window(fixed, c, card)
+        # keyboard order follows the screen rather than stacking order
+        ordered = sorted(mine, key=lambda c: (c["at"][1], c["at"][0]))
+        for c in ordered:
+            widget = next(t for t in self.pending_widgets if t[0] == c["address"])[1]
+            self.targets.append({"win": c, "ws": ws, "widget": widget, "card": card})
+        self.pending_widgets = []
+        if not mine:
+            self.targets.append({"win": None, "ws": ws, "widget": card, "card": card})
+
+        num = Gtk.Label(label=str(ws), halign=Gtk.Align.START, valign=Gtk.Align.START)
+        num.add_css_class("card-num")
+        num.set_can_target(False)
+        card.add_overlay(num)
+
+        drop = Gtk.DropTarget.new(GObject.TYPE_STRING, Gdk.DragAction.MOVE)
+        drop.connect("accept", lambda *_: True)
+        drop.connect("enter", lambda *_: card.add_css_class("hover-drop") or Gdk.DragAction.MOVE)
+        drop.connect("leave", lambda *_: card.remove_css_class("hover-drop"))
+        drop.connect("drop", lambda _d, address, *_: self.on_drop(address, ws))
+        card.add_controller(drop)
+        return card
+
+    pending_widgets = []
+
+    def add_window(self, fixed, c, card):
+        mon = self.monitors.get(c.get("monitor")) if isinstance(c.get("monitor"), str) else None
+        if mon is None:
+            mon = next((m for m in self.monitors.values() if m["id"] == c.get("monitor")), None)
+        ox, oy = (mon["x"], mon["y"]) if mon else (0, 0)
+        s = self.card_scale
+        x, y = (c["at"][0] - ox) * s, (c["at"][1] - oy) * s
+        w, h = max(int(c["size"][0] * s), 16), max(int(c["size"][1] * s), 12)
+
+        frame = Gtk.Overlay()
+        frame.add_css_class("win")
+        frame.set_overflow(Gtk.Overflow.HIDDEN)
+        frame.pick_target = {"ws": c["workspace"]["id"], "win": c}
+        frame.set_tooltip_text(f"{c['class']} — {c['title']}")
+        thumb = Thumb(max(w - 4, 8), max(h - 4, 8))
+        frame.set_child(thumb)
+        icon = Gtk.Image.new_from_icon_name(c["class"].lower())
+        icon.set_pixel_size(min(40, max(16, min(w, h) // 2)))
+        icon.set_can_target(False)
+        frame.add_overlay(icon)
+        tex = self.textures.get(c["stableId"])
+        if tex:
+            thumb.set_texture(tex)
+            icon.set_visible(False)
+        self.thumbs[c["stableId"]] = (thumb, icon)
+
+        source = Gtk.DragSource(actions=Gdk.DragAction.MOVE)
+        source.connect("prepare", self.drag_prepare, c["address"])
+        source.connect("drag-begin", self.drag_begin, frame)
+        source.connect("drag-end", self.drag_end)
+        frame.add_controller(source)
+
+        fixed.put(frame, max(x, 0), max(y, 0))
+        self.pending_widgets = self.pending_widgets + [(c["address"], frame)]
+
+    # ------------------------------------------------------------- thumbs ----
+    def capture_loop(self):
+        windows = sorted(self.windows, key=lambda c: c["workspace"]["id"] != self.active_ws)
+        scale = self.card_scale
+
+        def grab(c):
+            shot = capture(c["stableId"], scale)
+            if shot:
+                GLib.idle_add(self.apply_shot, c["stableId"], *shot)
+
+        # first pass in parallel so the cards fill in right away
+        queue = list(windows)
+        lock = threading.Lock()
+
+        def worker():
+            while True:
+                with lock:
+                    if not queue:
+                        return
+                    c = queue.pop(0)
+                grab(c)
+
+        pool = [threading.Thread(target=worker, daemon=True) for _ in range(FIRST_PASS_WORKERS)]
+        for t in pool:
+            t.start()
+        for t in pool:
+            t.join()
+
+        # then one at a time, so a long-open overview stays light on the CPU
+        while self.running:
+            fresh = list_windows()
+            if {c["address"]: (c["workspace"]["id"], tuple(c["at"]), tuple(c["size"])) for c in fresh} != \
+               {c["address"]: (c["workspace"]["id"], tuple(c["at"]), tuple(c["size"])) for c in self.windows}:
+                GLib.idle_add(self.apply_windows, fresh)
+            order = sorted(fresh, key=lambda c: c["workspace"]["id"] != self.active_ws)
+            for c in order:
+                if not self.running:
+                    return
+                if not self.dragging:
+                    grab(c)
+                time.sleep(0.1)
+            time.sleep(0.5)
+
+    def apply_shot(self, stable_id, width, height, pixels):
+        texture = Gdk.MemoryTexture.new(width, height, Gdk.MemoryFormat.R8G8B8, GLib.Bytes.new(pixels), width * 3)
+        self.textures[stable_id] = texture
+        entry = self.thumbs.get(stable_id)
+        if entry:
+            entry[0].set_texture(texture)
+            entry[1].set_visible(False)
+        return False
+
+    def apply_windows(self, fresh):
+        if not self.dragging:
+            self.windows = fresh
+            self.rebuild()
+        return False
+
+    # ---------------------------------------------------------- selection ----
+    def current_address(self):
+        if 0 <= self.selected < len(self.targets) and self.targets[self.selected]["win"]:
+            return self.targets[self.selected]["win"]["address"]
+        return None
+
+    def matches(self, target, query):
+        if not query:
+            return True
+        win = target["win"]
+        return bool(win) and query in f"{win['class']} {win['title']}".lower()
+
+    def on_search(self, entry):
+        query = entry.get_text().strip().lower()
+        for t in self.targets:
+            hit = self.matches(t, query)
+            (t["widget"].remove_css_class if hit else t["widget"].add_css_class)("dim")
+        for card in {id(t["card"]): t["card"] for t in self.targets}.values():
+            hit = any(self.matches(t, query) for t in self.targets if t["card"] is card)
+            (card.remove_css_class if hit else card.add_css_class)("dim")
+        if not self.matches(self.targets[self.selected], query):
+            for i, t in enumerate(self.targets):
+                if self.matches(t, query):
+                    self.selected = i
+                    break
+        self.show_selection()
+
+    def show_selection(self):
+        query = self.search.get_text().strip().lower()
+        for i, t in enumerate(self.targets):
+            (t["widget"].add_css_class if i == self.selected else t["widget"].remove_css_class)("sel")
+        t = self.targets[self.selected]
+        if not self.matches(t, query):
+            self.status.set_label("No matching windows")
+        elif t["win"]:
+            self.status.set_label(f"{t['win']['class']} — {t['win']['title']}")
+        else:
+            self.status.set_label(f"Workspace {t['ws']} (empty)")
+
+    def move_linear(self, step):
+        query = self.search.get_text().strip().lower()
+        n = len(self.targets)
+        for k in range(1, n + 1):
+            i = (self.selected + step * k) % n
+            if self.matches(self.targets[i], query):
+                self.selected = i
+                break
+        self.show_selection()
+
+    def move_row(self, step):
+        ids = self.workspace_ids()
+        col_index = ids.index(self.targets[self.selected]["ws"]) + step * self.columns
+        if 0 <= col_index < len(ids):
+            ws = ids[col_index]
+            self.selected = next(i for i, t in enumerate(self.targets) if t["ws"] == ws)
+            self.show_selection()
+
+    def activate(self, target):
+        if target["win"]:
+            address = target["win"]["address"]
+            self.finish(f'hl.dsp.focus({{ window = "address:{address}" }})')
+        else:
+            self.finish(f'hl.dsp.focus({{ workspace = {target["ws"]} }})')
+
+    # -------------------------------------------------------------- input ----
+    def on_key(self, _c, kv, _code, state):
+        shift = bool(state & Gdk.ModifierType.SHIFT_MASK)
+        if kv == Gdk.KEY_Escape:
+            if self.search.get_text():
+                self.search.set_text("")
+            else:
+                self.finish()
+        elif kv in (Gdk.KEY_Return, Gdk.KEY_KP_Enter):
+            query = self.search.get_text().strip().lower()
+            if self.matches(self.targets[self.selected], query):
+                self.activate(self.targets[self.selected])
+        elif kv in (Gdk.KEY_Tab, Gdk.KEY_ISO_Left_Tab):
+            self.move_linear(-1 if shift or kv == Gdk.KEY_ISO_Left_Tab else 1)
+        elif kv == Gdk.KEY_Right:
+            self.move_linear(1)
+        elif kv == Gdk.KEY_Left:
+            self.move_linear(-1)
+        elif kv == Gdk.KEY_Down:
+            self.move_row(1)
+        elif kv == Gdk.KEY_Up:
+            self.move_row(-1)
+        else:
+            return False
+        return True
+
+    def on_click(self, gesture, _n, x, y):
+        if self.dragging or gesture.get_current_button() != Gdk.BUTTON_PRIMARY:
+            return
+        widget = self.win.pick(x, y, Gtk.PickFlags.DEFAULT)
+        while widget is not None:
+            target = getattr(widget, "pick_target", None)
+            if target:
+                self.activate(target)
+                return
+            if widget is self.search:
+                return
+            widget = widget.get_parent()
+        self.finish()  # clicked the empty space around the cards
+
+    def drag_prepare(self, _source, _x, _y, address):
+        return Gdk.ContentProvider.new_for_value(address)
+
+    def drag_begin(self, source, _drag, frame):
+        self.dragging = True
+        source.set_icon(Gtk.WidgetPaintable.new(frame), 20, 20)
+
+    def drag_end(self, _source, _drag, _deleted):
+        GLib.timeout_add(150, self.clear_dragging)
+
+    def clear_dragging(self):
+        self.dragging = False
+        return False
+
+    def on_drop(self, address, ws):
+        dispatch(f'hl.dsp.window.move({{ workspace = {ws}, follow = false, window = "address:{address}" }})')
+        GLib.timeout_add(150, self.after_drop)
+        return True
+
+    def after_drop(self):
+        self.dragging = False
+        self.windows = list_windows()
+        self.rebuild()
+        return False
+
+    def on_active(self, win, _pspec):
+        if win.is_active():
+            self._seen_active = True
+        elif getattr(self, "_seen_active", False) and not self.dragging:
+            self.finish()
+
+    def finish(self, lua=None):
+        self.running = False
+        self.after_close = lua
+        self.app.quit()
+
+
+def main():
+    app = Gtk.Application(application_id=APP_ID)
+    state = {"overview": None}
+
+    def activate(app):
+        if state["overview"]:  # second SUPER+Tab → close
+            state["overview"].finish()
+            return
+        state["overview"] = Overview(app)
+
+    app.connect("activate", activate)
+    app.run([])
+    overview = state["overview"]
+    if overview and overview.after_close:
+        # focus after the overlay is gone, or Hyprland hands focus back to the previous window
+        time.sleep(0.05)
+        dispatch(overview.after_close)
+    os._exit(0)  # don't wait for a capture thread that is mid-grim
+
+
+if __name__ == "__main__":
+    main()

@@ -1,0 +1,18 @@
+# title: Desktop
+# required: yes
+# about: The compositor and the pieces you see on screen. Without these there is no desktop.
+hyprland | The Wayland compositor / tiling window manager. This rice uses its Lua config (config/hypr/hyprland.lua), tested on 0.57.
+uwsm | Starts Hyprland as a systemd-managed session (the "Hyprland (uwsm)" entry on the login screen), so user services start and stop cleanly.
+hyprlock | Lock screen (SUPER+L). Shows the wallpaper, clock, and music / notification / battery lines from rice-lockinfo.
+hypridle | Idle daemon: dims at 4 min, locks at 5, screen off at 6, suspends at 15 (config/hypr/hypridle.conf).
+hyprpolkitagent | The password prompt that appears when an app asks for admin rights.
+xdg-desktop-portal-hyprland | Screen sharing and screenshots for sandboxed apps and browsers.
+xdg-desktop-portal-gtk | The "Open file / Save as" dialogs used by browsers, Code and other apps.
+waybar | The top bar. Config and style in config/waybar/, colours from matugen.
+fuzzel | App launcher (SUPER+Space). Also draws every dropdown panel (wi-fi, bluetooth, memory, power, clipboard, window switcher).
+mako | Notification daemon. Also draws the volume / brightness popup.
+libnotify | Provides notify-send, which the scripts use to show notifications.
+kitty | Terminal (SUPER+Return). Recolours live when the wallpaper changes.
+awww | Wallpaper daemon with animated transitions (formerly swww). Driven by the `wall` script.
+qt5-wayland | Lets Qt 5 apps run natively on Wayland instead of through XWayland.
+qt6-wayland | Same, for Qt 6 apps.

@@ -1,0 +1,4 @@
+/target
+/packaging/arch/pkg
+/packaging/arch/src
+*.pkg.tar.zst

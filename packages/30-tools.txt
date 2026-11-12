@@ -1,0 +1,23 @@
+# title: Tools the scripts and apps call
+# required: yes
+# about: Small programs used by the rice-* scripts in bin/ and by the two apps. Each line names who uses it.
+python | Runs the Python tools: lyra, rice-wallpicker, rice-calendar, rice-battery, rice-overview, rice-vscode-sync. Shell scripts also use it to read hyprctl's JSON (so jq is not needed).
+python-gobject | GTK bindings for Python, used by those tools to draw their windows.
+gtk4 | UI toolkit for the Python popups and for both Rust apps (rice-settings, slap-files).
+playerctl | Media control: the media keys, the music module in the bar (lyra) and the lock-screen music line.
+imagemagick | Makes wallpaper thumbnails (rice-wallpicker) and the login-screen background (rice-sddm-sync).
+grim | Takes screenshots (rice-shot) and the live window thumbnails in the overview (rice-overview).
+slurp | Lets you drag-select the screenshot region.
+wl-clipboard | wl-copy / wl-paste: copies screenshots, feeds the clipboard history.
+cliphist | Clipboard history (SUPER+V).
+brightnessctl | Screen and keyboard backlight (brightness keys, idle dimming, rice-settings).
+wireplumber | Provides wpctl for the volume keys; also the session manager PipeWire needs.
+power-profiles-daemon | power-saver / balanced / performance switching (bar module, rice-battery auto-switch, rice-settings).
+udisks2 | Lists, mounts, unlocks and safely ejects drives in slap-files.
+libarchive | Provides bsdtar: "extract here" in slap-files (zip, tar.*, 7z, rar, iso).
+zip | "Compress to zip" in slap-files.
+unzip | Unpacks zip files from the terminal.
+zstd | "Compress to tar.zst" in slap-files.
+psmisc | Provides fuser: slap-files names the programs blocking an eject.
+poppler | Provides pdftoppm: PDF thumbnails in slap-files.
+ffmpeg | Video thumbnails in slap-files.

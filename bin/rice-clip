@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+# clipboard history picker
+sel="$(cliphist list | fuzzel --dmenu --prompt '󰅌  ' --placeholder 'clipboard…' --width 60)" || exit 0
+printf '%s' "$sel" | cliphist decode | wl-copy

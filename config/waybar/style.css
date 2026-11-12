@@ -1,0 +1,86 @@
+/* Layout and pills adapted from atif-1402/minimal-waybar-themes V2 (MIT).
+   Colours follow matugen, so the bar switches with the dark/light mode. */
+@import "colors.css";
+
+@define-color bg       @surface;
+@define-color fg       @on_surface;
+@define-color accent   @primary;
+@define-color warning  @tertiary;
+@define-color critical @error;
+@define-color pill     alpha(@on_surface, 0.1);
+@define-color dim      alpha(@on_surface, 0.6);
+
+* {
+  color: @fg;
+  border: none;
+  border-radius: 3px;
+  min-height: 0;
+  font-family: "GeistMono Nerd Font", monospace;
+  font-feature-settings: "tnum";
+  font-size: 12px;
+  font-weight: 500;
+}
+
+/* rice-settings' appearance page edits these border-radius values, so keep the selectors as is */
+window#waybar { background-color: transparent; }
+window#waybar > box { background-color: @bg; border-radius: 6px; }
+
+.modules-left  { margin-left: 6px; }
+.modules-right { margin-right: 4px; }
+
+/* ── pills ────────────────────────────────────────── */
+#workspaces, #custom-lyra, #window, #ctl, #clock {
+  background-color: @pill;
+  margin: 3px;
+  padding: 0 7px;
+  font-weight: 600;
+}
+
+/* no focused window: drop the centre pill entirely */
+window#waybar.empty #window { background-color: transparent; color: transparent; padding: 0; margin: 0; }
+
+/* ── left ─────────────────────────────────────────── */
+#custom-distro { padding: 0 6px 0 4px; font-size: 14px; }
+#custom-distro:hover { color: @accent; }
+
+#workspaces { padding: 0 4px; }
+#workspaces button {
+  all: initial;
+  padding: 0 5px;
+  min-width: 9px;
+}
+#workspaces button label { font-size: 11px; }
+#workspaces button.empty label { color: @dim; }
+#workspaces button.active label { color: @accent; font-size: 13px; }
+#workspaces button.urgent label { color: @critical; }
+#workspaces button:hover label { color: @accent; }
+
+#custom-lyra.paused, #custom-lyra:hover { color: @dim; }
+
+/* ── status group ─────────────────────────────────── */
+#bluetooth, #network, #pulseaudio, #cpu, #battery { padding: 0 5px; }
+#bluetooth:hover, #network:hover, #pulseaudio:hover { color: @accent; }
+#bluetooth.off, #bluetooth.disabled, #network.disconnected, #network.disabled, #pulseaudio.muted { color: @dim; }
+#bluetooth.connected { color: @accent; }
+#cpu.warning { color: @warning; }
+#cpu.critical { color: @critical; }
+#battery.charging, #battery.plugged  { color: @accent; }
+#battery.warning:not(.charging)      { color: @warning; }
+#battery.critical:not(.charging)     { color: @critical; }
+
+#clock:hover { color: @accent; }
+
+/* ── tray, profile, memory, brightness, wallpaper, power ── */
+#tray, #custom-profile, #memory, #backlight, #custom-arch, #custom-power { padding: 0 6px; }
+#custom-profile:hover, #memory:hover, #custom-arch:hover { color: @accent; }
+#custom-profile.performance { color: @warning; }
+#custom-profile.power-saver { color: @accent; }
+#memory.warning  { color: @warning; }
+#memory.critical { color: @critical; }
+#custom-power:hover { color: @critical; }
+
+/* ── popups ───────────────────────────────────────── */
+tooltip { background-color: @bg; border: 1px solid alpha(@on_surface, 0.3); border-radius: 6px; }
+tooltip label { color: @fg; }
+menu { background-color: @bg; border: 1px solid alpha(@on_surface, 0.3); border-radius: 6px; }
+menu menuitem:hover { background-color: @pill; }

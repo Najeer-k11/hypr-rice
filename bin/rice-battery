@@ -1,0 +1,568 @@
+#!/usr/bin/env python3
+"""rice-battery — battery and power dashboard under the waybar battery module.
+
+  rice-battery          open the popup, or close it if it's already open
+  rice-battery daemon   log history and switch power profile on plug/unplug
+                        (started from hyprland.lua; only one instance runs)
+
+History: ~/.local/state/rice/battery.csv (time, percent, watts; 8 days kept).
+Settings: ~/.config/rice/battery.json. Esc closes; closes on focus loss.
+"""
+import fcntl
+import json
+import os
+import subprocess
+import time
+from pathlib import Path
+
+def _supply(kind, fallback):
+    """First /sys/class/power_supply entry of this type (names differ per laptop: BAT0/BAT1, ADP0/AC/ACAD)."""
+    for d in sorted(Path("/sys/class/power_supply").glob("*")):
+        try:
+            if (d / "type").read_text().strip() == kind and not d.name.startswith("hid"):
+                return d
+        except OSError:
+            pass
+    return Path("/sys/class/power_supply") / fallback
+
+
+BAT = _supply("Battery", "BAT0")
+AC = _supply("Mains", "ADP0") / "online"
+DGPU = Path("/sys/bus/pci/devices/0000:01:00.0/power/runtime_status")
+RUNTIME = Path(os.environ.get("XDG_RUNTIME_DIR", "/tmp"))
+LOG = Path.home() / ".local/state/rice/battery.csv"
+SETTINGS = Path.home() / ".config/rice/battery.json"
+COLORS = Path.home() / ".config/waybar/colors.css"
+CLOSED_STAMP = RUNTIME / "rice-battery-closed"
+KEEP_SECONDS = 8 * 86400
+GAP_SECONDS = 300  # a longer hole in the log (suspend, powered off) breaks the line
+DEFAULTS = {"auto_profile": True, "on_battery": "power-saver", "on_ac": "balanced"}
+
+
+def read(path, default=None):
+    try:
+        return Path(path).read_text().strip()
+    except OSError:
+        return default
+
+
+def read_num(path, default=0):
+    try:
+        return int(read(path))
+    except (TypeError, ValueError):
+        return default
+
+
+def on_ac():
+    return read(AC) == "1"
+
+
+def battery():
+    now = read_num(BAT / "energy_now")
+    full = read_num(BAT / "energy_full")
+    design = read_num(BAT / "energy_full_design")
+    return {
+        "percent": read_num(BAT / "capacity"),
+        "status": read(BAT / "status", "Unknown"),
+        "watts": read_num(BAT / "power_now") / 1e6,
+        "volts": read_num(BAT / "voltage_now") / 1e6,
+        "now_wh": now / 1e6,
+        "full_wh": full / 1e6,
+        "design_wh": design / 1e6,
+        "health": 100 * full / design if design else 0,
+        "limit": read_num(BAT / "charge_control_end_threshold", 100),
+    }
+
+
+def load_settings():
+    try:
+        return {**DEFAULTS, **json.loads(SETTINGS.read_text())}
+    except (OSError, ValueError):
+        return dict(DEFAULTS)
+
+
+def save_settings(settings):
+    SETTINGS.parent.mkdir(parents=True, exist_ok=True)
+    SETTINGS.write_text(json.dumps(settings, indent=2) + "\n")
+
+
+def set_profile(profile):
+    subprocess.run(["powerprofilesctl", "set", profile], check=False)
+    subprocess.run(["pkill", "-RTMIN+8", "-x", "waybar"], check=False)  # refresh the bar icon
+
+
+def get_profile():
+    r = subprocess.run(["powerprofilesctl", "get"], capture_output=True, text=True, check=False)
+    return r.stdout.strip()
+
+
+# ---------------------------------------------------------------- daemon ----
+def prune_log():
+    cutoff = time.time() - KEEP_SECONDS
+    try:
+        keep = [l for l in LOG.read_text().splitlines() if float(l.split(",")[0]) >= cutoff]
+    except (OSError, ValueError, IndexError):
+        return
+    tmp = LOG.with_suffix(".tmp")
+    tmp.write_text("".join(l + "\n" for l in keep))
+    tmp.replace(LOG)
+
+
+def daemon():
+    lock = open(RUNTIME / "rice-battery-daemon.lock", "w")
+    try:
+        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError:
+        return  # already running
+    LOG.parent.mkdir(parents=True, exist_ok=True)
+    prune_log()
+    was_ac = on_ac()
+    last_log = last_prune = 0.0
+    while True:
+        now = time.time()
+        if now - last_log >= 60:
+            b = battery()
+            with LOG.open("a") as f:
+                f.write(f"{now:.0f},{b['percent']},{b['watts']:.2f}\n")
+            last_log = now
+        if now - last_prune >= 3600:
+            prune_log()
+            last_prune = now
+        ac = on_ac()
+        if ac != was_ac:  # only on a change, so a manual choice sticks until the next one
+            was_ac = ac
+            s = load_settings()
+            if s["auto_profile"]:
+                profile = s["on_ac"] if ac else s["on_battery"]
+                set_profile(profile)
+                subprocess.run(["notify-send", "-a", "power", "-t", "1500", "Power profile",
+                                f"{'Plugged in' if ac else 'On battery'}: {profile}"], check=False)
+        time.sleep(5)
+
+
+# ----------------------------------------------------------------- popup ----
+def load_history(window):
+    cutoff = time.time() - window
+    rows = []
+    try:
+        for line in LOG.read_text().splitlines():
+            t, pct, w = line.split(",")
+            t = float(t)
+            if t >= cutoff:
+                rows.append((t, float(pct), float(w)))
+    except (OSError, ValueError):
+        pass
+    return rows
+
+
+def duration(hours):
+    mins = round(hours * 60)
+    return f"{mins // 60}h {mins % 60:02d}m" if mins >= 60 else f"{mins}m"
+
+
+class CpuSampler:
+    """CPU share per process name. Linux has no per-app watts, so this is the closest proxy."""
+
+    def __init__(self):
+        self.prev = {}
+
+    def sample(self):
+        cur = {}
+        names = {}
+        for entry in os.listdir("/proc"):
+            if not entry.isdigit():
+                continue
+            try:
+                raw = Path(f"/proc/{entry}/stat").read_text()
+            except OSError:
+                continue
+            name = raw[raw.index("(") + 1:raw.rindex(")")]
+            fields = raw[raw.rindex(")") + 2:].split()
+            if fields[1] == "2" or entry == "2":  # kernel threads
+                continue
+            cur[entry] = int(fields[11]) + int(fields[12])
+            names[entry] = name
+        totals = {}
+        for pid, ticks in cur.items():
+            delta = ticks - self.prev.get(pid, ticks)
+            if delta > 0 and names[pid] != "rice-battery":
+                totals[names[pid]] = totals.get(names[pid], 0) + delta
+        self.prev = cur
+        busy = sum(totals.values())
+        if not busy:
+            return []
+        top = sorted(totals.items(), key=lambda kv: -kv[1])[:5]
+        return [(name, 100 * ticks / busy) for name, ticks in top]
+
+
+def popup():
+    # GL renderer: GTK4's Vulkan default wakes the suspended NVIDIA dGPU (~2 s open delay).
+    os.environ.setdefault("GSK_RENDERER", "gl")
+    # The desktop portal check costs ~440 ms of GTK startup, and nothing here uses portals.
+    os.environ.setdefault("GDK_DEBUG", "no-portals")
+    import gi
+
+    gi.require_version("Gtk", "4.0")
+    gi.require_version("Gdk", "4.0")
+    from gi.repository import Gdk, GLib, Gtk
+
+    css = """
+    window.ricebat { background: @surface; border-radius: 10px; border: 1px solid @outline_variant; }
+    .root { padding: 16px; font-family: "GeistMono Nerd Font"; color: @on_surface; }
+    .pct { font-size: 34px; font-weight: 700; }
+    .state { font-size: 12px; color: @on_surface_variant; }
+    .watts { font-size: 15px; font-weight: 700; color: @primary; }
+    .section { font-size: 11px; font-weight: 700; color: @on_surface_variant; margin-top: 6px; }
+    .cell { background: @surface_container; border-radius: 8px; padding: 8px 10px; }
+    .cell-value { font-size: 13px; font-weight: 700; }
+    .cell-name { font-size: 10px; color: @on_surface_variant; }
+    .note { font-size: 10px; color: @outline; }
+    .app { font-size: 11px; }
+    button.opt { background: @surface_container; color: @on_surface; border: none; box-shadow: none;
+                 border-radius: 8px; padding: 5px 4px; min-height: 0; font-size: 11px; }
+    button.opt:hover { background: @surface_container_high; }
+    button.opt.on { background: @primary; color: @on_primary; font-weight: 700; }
+    switch { min-height: 18px; min-width: 34px; background: @surface_container_high; }
+    switch:checked { background: @primary; }
+    switch slider { min-width: 16px; min-height: 16px; background: @on_surface; }
+    switch:checked slider { background: @on_primary; }
+    progressbar trough { min-height: 4px; background: @surface_container_high; border-radius: 2px; border: none; }
+    progressbar progress { min-height: 4px; background: @primary; border-radius: 2px; border: none; }
+    """
+    palette = {}
+    colors = read(COLORS, "")
+    for line in colors.splitlines():
+        parts = line.replace(";", "").split()
+        if len(parts) == 3 and parts[0] == "@define-color":
+            rgba = Gdk.RGBA()
+            if rgba.parse(parts[2]):
+                palette[parts[1]] = rgba
+
+    def rgb(name, fallback="#888888"):
+        c = palette.get(name)
+        if c is None:
+            c = Gdk.RGBA()
+            c.parse(fallback)
+        return c.red, c.green, c.blue
+
+    class Popup:
+        def __init__(self, app):
+            prov = Gtk.CssProvider()
+            prov.load_from_string(colors + css)
+            Gtk.StyleContext.add_provider_for_display(
+                Gdk.Display.get_default(), prov, Gtk.STYLE_PROVIDER_PRIORITY_USER)
+            self.settings = load_settings()
+            self.window_secs = 86400
+            self.smooth = []
+            self.sampler = CpuSampler()
+            self.sampler.sample()
+            self.history = load_history(self.window_secs)
+
+            win = self.win = Gtk.ApplicationWindow(application=app, title="battery")
+            win.add_css_class("ricebat")
+            win.set_decorated(False)
+            win.set_resizable(False)
+            win.set_default_size(380, -1)
+
+            root = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
+            root.add_css_class("root")
+            root.set_size_request(380, -1)
+            win.set_child(root)
+
+            head = Gtk.Box(spacing=12)
+            self.pct = Gtk.Label(xalign=0)
+            self.pct.add_css_class("pct")
+            head.append(self.pct)
+            info = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, valign=Gtk.Align.CENTER, hexpand=True)
+            self.state = Gtk.Label(xalign=0)
+            self.state.add_css_class("state")
+            self.left = Gtk.Label(xalign=0)
+            self.left.add_css_class("state")
+            info.append(self.state)
+            info.append(self.left)
+            head.append(info)
+            self.watts = Gtk.Label(xalign=1, valign=Gtk.Align.CENTER)
+            self.watts.add_css_class("watts")
+            head.append(self.watts)
+            root.append(head)
+
+            row = Gtk.Box(spacing=8)
+            label = Gtk.Label(label="HISTORY", xalign=0, hexpand=True, valign=Gtk.Align.CENTER)
+            label.add_css_class("section")
+            row.append(label)
+            self.range_btns = self.options(row, [("24h", 86400), ("7d", 7 * 86400)], self.set_range)
+            root.append(row)
+
+            self.chart = Gtk.DrawingArea()
+            self.chart.set_content_height(110)
+            self.chart.set_draw_func(self.draw)
+            root.append(self.chart)
+
+            legend = Gtk.Label(xalign=0, use_markup=True)
+            legend.add_css_class("note")
+            pri = "#%02x%02x%02x" % tuple(int(v * 255) for v in rgb("primary"))
+            ter = "#%02x%02x%02x" % tuple(int(v * 255) for v in rgb("tertiary"))
+            legend.set_markup(f"<span foreground='{pri}'>━</span> charge  "
+                              f"<span foreground='{ter}'>━</span> power draw")
+            root.append(legend)
+
+            cells = Gtk.Box(spacing=8, homogeneous=True)
+            self.health = self.cell(cells, "HEALTH")
+            self.capacity = self.cell(cells, "CAPACITY")
+            self.dgpu = self.cell(cells, "NVIDIA GPU")
+            root.append(cells)
+
+            label = Gtk.Label(label="POWER PROFILE", xalign=0)
+            label.add_css_class("section")
+            root.append(label)
+            row = Gtk.Box(spacing=6, homogeneous=True)
+            self.profile_btns = self.options(
+                row, [("Saver", "power-saver"), ("Balanced", "balanced"), ("Performance", "performance")],
+                self.pick_profile)
+            root.append(row)
+
+            row = Gtk.Box(spacing=8)
+            text = Gtk.Label(xalign=0, hexpand=True, wrap=True, max_width_chars=38)
+            text.set_label(f"Auto switch: {self.settings['on_battery']} on battery, "
+                           f"{self.settings['on_ac']} plugged in")
+            text.add_css_class("note")
+            row.append(text)
+            auto = Gtk.Switch(active=self.settings["auto_profile"], valign=Gtk.Align.CENTER)
+            auto.connect("notify::active", self.toggle_auto)
+            row.append(auto)
+            root.append(row)
+
+            label = Gtk.Label(label="CHARGE LIMIT", xalign=0)
+            label.add_css_class("section")
+            root.append(label)
+            row = Gtk.Box(spacing=6, homogeneous=True)
+            self.limit_btns = self.options(
+                row, [("60%", 60), ("80%", 80), ("100%", 100)], self.pick_limit)
+            root.append(row)
+
+            label = Gtk.Label(label="BUSIEST APPS", xalign=0)
+            label.add_css_class("section")
+            root.append(label)
+            self.apps = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
+            self.apps.set_size_request(-1, 90)
+            root.append(self.apps)
+            note = Gtk.Label(label="Share of CPU use, not measured watts", xalign=0)
+            note.add_css_class("note")
+            root.append(note)
+
+            keys = Gtk.EventControllerKey()
+            keys.connect("key-pressed", self.on_key)
+            win.add_controller(keys)
+            win.connect("notify::is-active", self.on_active)
+
+            self.mark(self.range_btns, self.window_secs)
+            self.mark(self.profile_btns, get_profile())
+            self.refresh()
+            GLib.timeout_add_seconds(2, self.refresh)
+            win.present()
+
+        @staticmethod
+        def cell(parent, name):
+            box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+            box.add_css_class("cell")
+            value = Gtk.Label(xalign=0)
+            value.add_css_class("cell-value")
+            label = Gtk.Label(label=name, xalign=0)
+            label.add_css_class("cell-name")
+            box.append(value)
+            box.append(label)
+            parent.append(box)
+            return value
+
+        @staticmethod
+        def options(parent, items, callback):
+            buttons = {}
+            for text, value in items:
+                b = Gtk.Button(label=text)
+                b.add_css_class("opt")
+                b.connect("clicked", lambda _b, v=value: callback(v))
+                parent.append(b)
+                buttons[value] = b
+            return buttons
+
+        @staticmethod
+        def mark(buttons, value):
+            for key, b in buttons.items():
+                (b.add_css_class if key == value else b.remove_css_class)("on")
+
+        def set_range(self, secs):
+            self.window_secs = secs
+            self.history = load_history(secs)
+            self.mark(self.range_btns, secs)
+            self.chart.queue_draw()
+
+        def pick_profile(self, profile):
+            set_profile(profile)
+            self.mark(self.profile_btns, get_profile())
+
+        def pick_limit(self, limit):
+            subprocess.run(["asusctl", "battery", "limit", str(limit)],
+                           capture_output=True, check=False)
+            GLib.timeout_add(300, self.refresh_limit)
+
+        def refresh_limit(self):
+            self.mark(self.limit_btns, battery()["limit"])
+            return False
+
+        def toggle_auto(self, switch, _pspec):
+            self.settings["auto_profile"] = switch.get_active()
+            save_settings(self.settings)
+
+        def refresh(self):
+            b = battery()
+            self.smooth = (self.smooth + [b["watts"]])[-5:]
+            watts = sum(self.smooth) / len(self.smooth)
+            self.pct.set_label(f"{b['percent']}%")
+            self.state.set_label("Plugged in" if on_ac() and b["status"] != "Charging" else b["status"])
+            if b["status"] == "Discharging" and watts > 0.5:
+                self.left.set_label(f"{duration(b['now_wh'] / watts)} left")
+            elif b["status"] == "Charging" and watts > 0.5:
+                target = b["full_wh"] * b["limit"] / 100
+                self.left.set_label(f"{duration(max(target - b['now_wh'], 0) / watts)} to {b['limit']}%")
+            else:
+                self.left.set_label("")
+            self.watts.set_label(f"{watts:.1f} W" if watts > 0 else "")
+            self.health.set_label(f"{b['health']:.0f}%")
+            self.capacity.set_label(f"{b['full_wh']:.0f}/{b['design_wh']:.0f} Wh")
+            self.dgpu.set_label({"suspended": "Asleep", "active": "Awake"}.get(read(DGPU), "Unknown"))
+            self.mark(self.limit_btns, b["limit"])
+
+            while (child := self.apps.get_first_child()):
+                self.apps.remove(child)
+            for name, share in self.sampler.sample():
+                row = Gtk.Box(spacing=8)
+                label = Gtk.Label(label=name, xalign=0, width_chars=16, max_width_chars=16)
+                label.set_ellipsize(3)
+                label.add_css_class("app")
+                bar = Gtk.ProgressBar(fraction=share / 100, hexpand=True, valign=Gtk.Align.CENTER)
+                value = Gtk.Label(label=f"{share:.0f}%", xalign=1, width_chars=4)
+                value.add_css_class("app")
+                row.append(label)
+                row.append(bar)
+                row.append(value)
+                self.apps.append(row)
+            return True
+
+        def draw(self, _area, cr, w, h):
+            top, bottom, left, right = 4, 14, 0, 0
+            pw, ph = w - left - right, h - top - bottom
+            now = time.time()
+            start = now - self.window_secs
+
+            def x_of(t):
+                return left + pw * (t - start) / self.window_secs
+
+            cr.select_font_face("GeistMono Nerd Font")
+            cr.set_font_size(9)
+            cr.set_source_rgb(*rgb("surface_container", "#222222"))
+            cr.rectangle(left, top, pw, ph)
+            cr.fill()
+            cr.set_source_rgb(*rgb("outline", "#888888"))
+            span = "24h ago" if self.window_secs == 86400 else "7d ago"
+            cr.move_to(left, h - 3)
+            cr.show_text(span)
+            ext = cr.text_extents("now")
+            cr.move_to(left + pw - ext.width - 1, h - 3)
+            cr.show_text("now")
+
+            if len(self.history) < 2:
+                cr.set_font_size(11)
+                msg = "Collecting history, check back soon"
+                ext = cr.text_extents(msg)
+                cr.move_to(left + (pw - ext.width) / 2, top + ph / 2)
+                cr.show_text(msg)
+                return
+
+            cr.set_source_rgb(*rgb("outline_variant", "#555555"))
+            cr.set_line_width(1)
+            for frac in (0.25, 0.5, 0.75):
+                cr.move_to(left, top + ph * frac + 0.5)
+                cr.line_to(left + pw, top + ph * frac + 0.5)
+            cr.stroke()
+
+            def runs():
+                run = []
+                prev = None
+                for row in self.history:
+                    if prev is not None and row[0] - prev > max(GAP_SECONDS, self.window_secs / pw * 2):
+                        yield run
+                        run = []
+                    run.append(row)
+                    prev = row[0]
+                yield run
+
+            peak = max(20.0, max(r[2] for r in self.history))
+            colour = rgb("primary", "#ffffff")
+            for run in runs():  # charge: filled area with a line on top
+                if len(run) < 2:
+                    continue
+                cr.move_to(x_of(run[0][0]), top + ph)
+                for t, pct, _w in run:
+                    cr.line_to(x_of(t), top + ph * (1 - pct / 100))
+                cr.line_to(x_of(run[-1][0]), top + ph)
+                cr.close_path()
+                cr.set_source_rgba(*colour, 0.18)
+                cr.fill()
+                for i, (t, pct, _w) in enumerate(run):
+                    (cr.move_to if i == 0 else cr.line_to)(x_of(t), top + ph * (1 - pct / 100))
+                cr.set_source_rgb(*colour)
+                cr.set_line_width(1.5)
+                cr.stroke()
+            cr.set_source_rgb(*rgb("tertiary", "#cccccc"))
+            cr.set_line_width(1)
+            for run in runs():  # power draw, scaled to the busiest moment (at least 20 W)
+                for i, (t, _p, watts) in enumerate(run):
+                    (cr.move_to if i == 0 else cr.line_to)(x_of(t), top + ph * (1 - watts / peak))
+                cr.stroke()
+
+        def on_key(self, _c, kv, *_):
+            if kv in (Gdk.KEY_Escape, Gdk.KEY_q):
+                self.close()
+                return True
+            return False
+
+        _seen_active = False
+
+        def on_active(self, win, _pspec):
+            if not win.is_active():
+                if self._seen_active:
+                    self.close()
+            else:
+                self._seen_active = True
+
+        def close(self):
+            CLOSED_STAMP.write_text(str(time.time()))
+            self.win.get_application().quit()
+
+    # the click that just closed us via focus-loss must not reopen us
+    try:
+        if time.time() - float(CLOSED_STAMP.read_text()) < 0.4:
+            return
+    except (OSError, ValueError):
+        pass
+
+    app = Gtk.Application(application_id="rice.battery")
+    state = {"win": None}
+
+    def activate(app):
+        if state["win"]:  # second invocation → close
+            app.quit()
+            return
+        state["win"] = Popup(app)
+
+    app.connect("activate", activate)
+    app.run([])
+
+
+if __name__ == "__main__":
+    import sys
+
+    if sys.argv[1:] == ["daemon"]:
+        daemon()
+    else:
+        popup()

@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+# rice-power [panel] — power menu. "panel" = dropdown under the bar (waybar click), else centred.
+menu() {
+    if [[ "${1:-}" == panel ]]; then rice-panel '  ' 'power' 22 --lines 5
+    else fuzzel --dmenu --prompt '  ' --lines 5 --width 22; fi
+}
+choice="$(printf '%s\n' '  lock' '󰤄  suspend' '󰍃  log out' '  reboot' '  shut down' | menu "${1:-}")" || exit 0
+case "$choice" in
+    *lock)      loginctl lock-session ;;
+    *suspend)   systemctl suspend ;;
+    *"log out") hyprctl dispatch 'hl.dsp.exit()' ;;
+    *reboot)    systemctl reboot ;;
+    *"shut down") systemctl poweroff ;;
+esac

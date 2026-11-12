@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+# rice-shot region|screen — saves to ~/Pictures/Screenshots and copies to clipboard
+set -e
+out="$HOME/Pictures/Screenshots/$(date +%Y-%m-%d_%H-%M-%S).png"
+case "${1:-region}" in
+    region) geo="$(slurp -d -b '#00000066' -w 0)" || exit 0; grim -g "$geo" "$out" ;;
+    screen) grim "$out" ;;
+esac
+wl-copy < "$out"
+notify-send -a screenshot -i "$out" "Screenshot copied" "$(basename "$out")"

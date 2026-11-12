@@ -1,0 +1,143 @@
+#!/usr/bin/env python3
+"""rice-calendar — floating month calendar under the waybar clock.
+
+  rice-calendar        open the popup, or close it if it's already open
+  ←/→ h/l  month   ↑/↓ k/j  year   t / Home  today   Esc  close
+Closes on focus loss. Uses matugen colours from ~/.config/waybar/colors.css.
+"""
+import os
+import time
+from pathlib import Path
+
+# GL renderer: GTK4's Vulkan default wakes the suspended NVIDIA dGPU (~2 s open delay).
+os.environ.setdefault("GSK_RENDERER", "gl")
+# The desktop portal check costs ~420 ms of GTK startup, and nothing here uses portals.
+os.environ.setdefault("GDK_DEBUG", "no-portals")
+import gi
+
+gi.require_version("Gtk", "4.0")
+gi.require_version("Gdk", "4.0")
+from gi.repository import Gdk, GLib, Gtk  # noqa: E402
+
+APP_ID = "rice.calendar"
+RUNTIME = Path(os.environ.get("XDG_RUNTIME_DIR", "/tmp"))
+COLORS = Path.home() / ".config/waybar/colors.css"
+CLOSED_STAMP = RUNTIME / "rice-calendar-closed"
+
+CSS = """
+window.ricecal { background: @surface; border-radius: 10px; border: 1px solid @outline_variant; }
+.cal-root { padding: 14px; font-family: "GeistMono Nerd Font"; }
+.cal-date { font-size: 13px; font-weight: 700; color: @on_surface; }
+.cal-sub  { font-size: 11px; color: @on_surface_variant; }
+calendar { background: transparent; border: none; color: @on_surface; padding: 0; }
+calendar > header { border: none; background: transparent; padding-bottom: 6px; }
+calendar > header > button { background: transparent; border: none; box-shadow: none; color: @on_surface_variant; border-radius: 6px; }
+calendar > header > button:hover { background: @surface_container_high; color: @on_surface; }
+calendar > header > label { color: @on_surface; font-weight: 700; }
+calendar > grid > label.day-name { color: @outline; font-size: 11px; }
+calendar > grid > label.day-number { padding: 4px 6px; border-radius: 6px; }
+calendar > grid > label.day-number:hover { background: @surface_container_high; }
+calendar > grid > label.day-number.other-month { color: @outline_variant; }
+calendar > grid > label.today { color: @primary; font-weight: 700; box-shadow: inset 0 -2px @primary; }
+calendar > grid > label.day-number:selected { background: @primary; color: @on_primary; box-shadow: none; }
+"""
+
+
+class Popup:
+    def __init__(self, app):
+        prov = Gtk.CssProvider()
+        colors = COLORS.read_text() if COLORS.is_file() else ""
+        prov.load_from_string(colors + CSS)
+        Gtk.StyleContext.add_provider_for_display(
+            Gdk.Display.get_default(), prov, Gtk.STYLE_PROVIDER_PRIORITY_USER)
+
+        win = self.win = Gtk.ApplicationWindow(application=app, title="calendar")
+        win.add_css_class("ricecal")
+        win.set_decorated(False)
+        win.set_resizable(False)
+
+        root = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
+        root.add_css_class("cal-root")
+        win.set_child(root)
+
+        now = GLib.DateTime.new_now_local()
+        head = Gtk.Label(label=now.format("%A, %d %B %Y"), xalign=0)
+        head.add_css_class("cal-date")
+        sub = Gtk.Label(label=now.format("week %V · day %j"), xalign=0)
+        sub.add_css_class("cal-sub")
+        root.append(head)
+        root.append(sub)
+
+        self.cal = Gtk.Calendar()
+        root.append(self.cal)
+
+        keys = Gtk.EventControllerKey()
+        keys.set_propagation_phase(Gtk.PropagationPhase.CAPTURE)
+        keys.connect("key-pressed", self.on_key)
+        win.add_controller(keys)
+        win.connect("notify::is-active", self.on_active)
+
+        scroll = Gtk.EventControllerScroll(flags=Gtk.EventControllerScrollFlags.VERTICAL)
+        scroll.connect("scroll", lambda _c, _dx, dy: self.shift(months=1 if dy > 0 else -1) or True)
+        self.cal.add_controller(scroll)
+
+        win.present()
+
+    def shift(self, months=0, years=0):
+        d = self.cal.get_date()
+        self.cal.select_day(d.add_full(years, months, 0, 0, 0, 0))
+
+    def on_key(self, _c, kv, *_):
+        K = Gdk
+        if kv in (K.KEY_Escape, K.KEY_q):
+            self.close()
+        elif kv in (K.KEY_Left, K.KEY_h):
+            self.shift(months=-1)
+        elif kv in (K.KEY_Right, K.KEY_l):
+            self.shift(months=1)
+        elif kv in (K.KEY_Up, K.KEY_k):
+            self.shift(years=-1)
+        elif kv in (K.KEY_Down, K.KEY_j):
+            self.shift(years=1)
+        elif kv in (K.KEY_t, K.KEY_Home):
+            self.cal.select_day(GLib.DateTime.new_now_local())
+        else:
+            return False
+        return True
+
+    _seen_active = False
+
+    def on_active(self, win, _pspec):
+        if not win.is_active():
+            self._seen_active and self.close()
+        else:
+            self._seen_active = True
+
+    def close(self):
+        CLOSED_STAMP.write_text(str(time.time()))
+        self.win.get_application().quit()
+
+
+def main():
+    # the click that just closed us via focus-loss must not reopen us
+    try:
+        if time.time() - float(CLOSED_STAMP.read_text()) < 0.4:
+            return
+    except (OSError, ValueError):
+        pass
+
+    app = Gtk.Application(application_id=APP_ID)
+    state = {"win": None}
+
+    def activate(app):
+        if state["win"]:  # second invocation → close
+            app.quit()
+            return
+        state["win"] = Popup(app)
+
+    app.connect("activate", activate)
+    app.run([])
+
+
+if __name__ == "__main__":
+    main()

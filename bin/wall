@@ -1,0 +1,58 @@
+#!/usr/bin/env bash
+# wall — set wallpaper + regenerate the whole palette with matugen
+#   wall set <file> | wall pick | wall random | wall restore
+set -euo pipefail
+DIR="${WALL_DIR:-$HOME/Pictures/Wallpapers}"
+STATE="$HOME/.cache/rice/current_wallpaper"
+mkdir -p "$(dirname "$STATE")"
+
+list() { find -L "$DIR" -maxdepth 2 -type f \( -iname '*.jpg' -o -iname '*.jpeg' -o -iname '*.png' -o -iname '*.webp' \) | sort; }
+
+# fx_args — shader-style transition, rippling out from the cursor
+#   WALL_FX=grow|wave|wipe|outer|random (default: random among them)
+fx_args() {
+    # cursor -> fractional position on focused monitor (awww's y is bottom-up), plus refresh rate
+    local fps pos
+    read -r fps pos < <(python3 -c '
+import json,subprocess as sp
+c=json.loads(sp.check_output(["hyprctl","cursorpos","-j"]))
+f=next(m for m in json.loads(sp.check_output(["hyprctl","monitors","-j"])) if m["focused"])
+w,h=f["width"]/f["scale"],f["height"]/f["scale"]
+x=min(max((c["x"]-f["x"])/w,0),1); y=min(max(1-(c["y"]-f["y"])/h,0),1)
+print(int(f["refreshRate"]), f"{x:.3f},{y:.3f}")' 2>/dev/null) || { fps=60; pos=0.5,0.5; }
+    local fx="${WALL_FX:-random}"
+    [[ $fx == random ]] && fx="$(printf '%s\n' grow grow wave wipe outer | shuf -n1)"
+    local common=(--transition-fps "$fps" --transition-bezier .65,0,.35,1)
+    case "$fx" in
+        grow)  echo --transition-type grow  --transition-pos "$pos" --transition-duration 1.4 "${common[@]}" ;;
+        outer) echo --transition-type outer --transition-pos "$pos" --transition-duration 1.4 "${common[@]}" ;;
+        wave)  echo --transition-type wave  --transition-angle $((RANDOM % 360)) --transition-wave 40,30 --transition-duration 1.6 "${common[@]}" ;;
+        wipe)  echo --transition-type wipe  --transition-angle $((RANDOM % 360)) --transition-duration 1.2 "${common[@]}" ;;
+    esac
+}
+
+apply() {
+    local img; img="$(realpath "$1")"
+    [[ -f "$img" ]] || { notify-send "wall" "not a file: $1"; exit 1; }
+    pgrep -x awww-daemon >/dev/null || { awww-daemon & sleep 0.4; }
+    awww img "$img" $(fx_args) &
+    echo "$img" > "$STATE"
+    # palette options chosen in rice-settings (colours page)
+    local MODE=dark SCHEME=scheme-tonal-spot CONTRAST=0
+    [[ -f "$HOME/.config/rice/theme.env" ]] && source "$HOME/.config/rice/theme.env"
+    matugen image "$img" -m "$MODE" -t "$SCHEME" --contrast "$CONTRAST" --source-color-index 0 >/dev/null
+    rice-sddm-sync >/dev/null 2>&1 &   # login screen follows the wallpaper
+    command -v rice-settings >/dev/null && rice-settings --sync-keyboard >/dev/null 2>&1 &   # RGB keyboard (if "follow wallpaper" is on)
+    wait
+}
+
+case "${1:-pick}" in
+    set)     apply "$2" ;;
+    random)  apply "$(list | shuf -n1)" ;;
+    restore) if [[ -f "$STATE" && -f "$(cat "$STATE")" ]]; then
+                 awww img "$(cat "$STATE")" --transition-type none
+             else apply "$(list | head -n1)"; fi ;;
+    pick)    choice="$(list | sed "s|^$DIR/||" | fuzzel --dmenu --prompt '󰸉  ' --placeholder 'wallpaper…')" || exit 0
+             apply "$DIR/$choice" ;;
+    *) echo "usage: wall set <file> | pick | random | restore"; exit 1 ;;
+esac

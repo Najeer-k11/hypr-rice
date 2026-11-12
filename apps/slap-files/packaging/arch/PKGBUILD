@@ -1,0 +1,37 @@
+# Build from this checkout:  cd packaging/arch && makepkg -si
+pkgname=slap-files
+pkgver=0.5.0
+pkgrel=1
+pkgdesc="Slap File Manager: Explorer-style file manager for Hyprland, themed from your wallpaper"
+arch=('x86_64' 'aarch64')
+license=('Unlicense')
+depends=('gtk4' 'udisks2')
+makedepends=('cargo')
+optdepends=(
+  'libarchive: extract archives (bsdtar)'
+  'zip: compress to zip'
+  'zstd: compress to tar.zst'
+  'psmisc: show which programs block an eject (fuser)'
+  'matugen-bin: wallpaper colours (AUR)'
+)
+options=('!lto')
+
+build() {
+  cd "$startdir/../.."
+  export CARGO_TARGET_DIR="$srcdir/target"
+  cargo build --release --locked
+}
+
+check() {
+  cd "$startdir/../.."
+  export CARGO_TARGET_DIR="$srcdir/target"
+  cargo test --release --locked
+}
+
+package() {
+  cd "$startdir/../.."
+  install -Dm755 "$srcdir/target/release/slap-files" "$pkgdir/usr/bin/slap-files"
+  install -Dm644 slap-files.desktop "$pkgdir/usr/share/applications/slap-files.desktop"
+  install -Dm644 README.md "$pkgdir/usr/share/doc/slap-files/README.md"
+  install -Dm644 LICENSE "$pkgdir/usr/share/licenses/slap-files/LICENSE"
+}

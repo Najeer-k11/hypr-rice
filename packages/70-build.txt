@@ -1,0 +1,7 @@
+# title: Build tools
+# required: yes
+# about: Needed once, to compile rice-settings and slap-files from the source in apps/. Nothing is downloaded prebuilt.
+rust | Rust compiler and cargo. Skipped automatically if you already have cargo (for example from rustup).
+pkgconf | Lets the build find the GTK 4 headers.
+git | Clones this repo and AUR packages.
+base-devel | Compiler toolchain, needed to build AUR packages.

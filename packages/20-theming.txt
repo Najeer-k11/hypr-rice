@@ -1,0 +1,16 @@
+# title: Theming
+# required: yes
+# about: Turns the wallpaper into a colour palette and gives apps fonts, icons and a GTK theme to draw with.
+matugen | Generates a Material You palette from the wallpaper and fills the templates in config/matugen/templates/ (Hyprland, hyprlock, waybar, fuzzel, mako, kitty, GTK, VS Code).
+adw-gtk-theme | GTK 3 theme that looks like libadwaita, so GTK 3 and GTK 4 apps match. Recoloured through ~/.config/gtk-3.0/colors.css.
+papirus-icon-theme | Icon theme for the launcher, notifications and apps.
+otf-geist-mono-nerd | GeistMono Nerd Font: the one font used everywhere (bar, launcher, terminal, lock screen, apps). Its Nerd Font glyphs are the icons.
+noto-fonts | Fallback font for regular text in apps and web pages.
+noto-fonts-emoji | Colour emoji.
+noto-fonts-cjk | Chinese / Japanese / Korean glyphs, so those don't render as empty boxes.
+qt6ct | Qt 6 settings tool. hyprland.lua sets QT_QPA_PLATFORMTHEME=qt6ct so Qt apps take their fonts and style from it.
+qt5ct | Same, for Qt 5 apps.
+nwg-look | GTK settings editor (theme, icons, cursor, font) for when you want something other than the defaults the installer sets.
+glib2 | Provides gsettings, used by the installer and rice-settings to set the GTK theme, icon theme, cursor and dark / light mode.
+gsettings-desktop-schemas | The settings schema (org.gnome.desktop.interface) those gsettings calls write to.
+dconf | The storage backend behind gsettings.

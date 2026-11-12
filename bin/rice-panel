@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+# rice-panel <prompt> <placeholder> [width] [extra fuzzel args…] — dropdown under the bar,
+# centred under the cursor (i.e. under the module that was clicked), clamped to the screen.
+# Reads entries on stdin, prints the chosen one. Toggles: a second click closes it.
+pkill -x fuzzel && exit 1
+# the same click may already have closed it via rice-clickout — don't reopen
+st="${XDG_RUNTIME_DIR:-/tmp}/rice-clickout"
+[[ -f "$st" ]] && (( $(date +%s%N) - $(<"$st") < 400000000 )) && exit 1
+p="$1"; ph="$2"; w="${3:-34}"; shift 3 2>/dev/null || shift $#
+# panel pixel width ≈ 37 + 9.15·chars (GeistMono 11pt, pad 18, border 1 — measured)
+x="$(hyprctl -j cursorpos | python -c '
+import json,sys,subprocess
+c=json.load(sys.stdin); w=int(sys.argv[1]); W=37+9.15*w
+for m in json.loads(subprocess.run(["hyprctl","-j","monitors"],capture_output=True,text=True).stdout):
+    mw=m["width"]/m["scale"]
+    if m["x"]<=c["x"]<m["x"]+mw: break
+x=c["x"]-m["x"]-W/2
+print(int(max(6,min(x,mw-W-6))))' "$w" 2>/dev/null)" || x=6
+exec fuzzel --dmenu --anchor top-left --x-margin "${x:-6}" --y-margin 6 \
+    --width "$w" --minimal-lines --lines 12 --prompt "$p" --placeholder "$ph" "$@"

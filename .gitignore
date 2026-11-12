@@ -1,0 +1,7 @@
+target/
+*.pkg.tar.*
+apps/*/packaging/arch/pkg/
+apps/*/packaging/arch/src/
+__pycache__/
+*.pre-*
+*.bak

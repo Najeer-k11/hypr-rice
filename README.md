@@ -20,7 +20,7 @@ are one switch.
 
 It is a full setup, not only dotfiles:
 
-- **Hyprland in Lua**: flat look, short animations, no blur or shadows, sensible tiling keybinds.
+- **Hyprland in Lua**: Flat look, short animations, no blur or shadows, sensible tiling keybinds.
 - **rice-settings**, a native settings app (Rust + GTK4, ~50 MB RAM): wallpaper, colours,
   appearance, bar layout, wi-fi, bluetooth, display, power and battery history, keyboard RGB.
 - **slap-files**, a native Explorer-style file manager (Rust + GTK4): tabs, search, thumbnails,

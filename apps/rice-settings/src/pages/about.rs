@@ -185,15 +185,15 @@ fn gather() -> Info {
 fn usage_row(card: &gtk::Box, icon: &str, title: &str, (used, total): (u64, u64)) {
     let r = ui::row(icon, title, &format!("{} of {}", util::human_bytes(used), util::human_bytes(total)));
     // plain boxes instead of GtkLevelBar: exact 6px pill, no theme surprises
-    const W: i32 = 180;
+    let w = crate::theme::px(180);
     let frac = if total > 0 { used as f64 / total as f64 } else { 0.0 };
     let lb = gtk::Box::new(gtk::Orientation::Horizontal, 0);
     lb.add_css_class("meter");
-    lb.set_size_request(W, 6);
+    lb.set_size_request(w, crate::theme::px(6));
     lb.set_valign(gtk::Align::Center);
     let fill = gtk::Box::new(gtk::Orientation::Horizontal, 0);
     fill.add_css_class("meter-fill");
-    fill.set_size_request(((W as f64 * frac).round() as i32).max(6), 6);
+    fill.set_size_request(((w as f64 * frac).round() as i32).max(crate::theme::px(6)), crate::theme::px(6));
     fill.set_halign(gtk::Align::Start);
     lb.append(&fill);
     let pct = ui::label(&format!("{:>3.0}%", if total > 0 { used as f64 * 100.0 / total as f64 } else { 0.0 }), &["dim"]);
@@ -226,13 +226,13 @@ fn render(body: &gtk::Box, i: Info) {
     body.append(&hero);
 
     // ---- laptop name (hostname)
-    let c = ui::section(body, "name");
-    let r = ui::row("󰌢", "device name", "how this machine shows up on networks and bluetooth");
+    let c = ui::section(body, "Name");
+    let r = ui::row("󰌢", "Device name", "How this machine shows up on networks and Bluetooth");
     let entry = gtk::Entry::new();
     entry.set_text(&i.host);
     entry.set_width_chars(18);
     entry.set_valign(gtk::Align::Center);
-    let save = ui::button("rename", &[]);
+    let save = ui::button("Rename", &[]);
     save.set_sensitive(false);
     r.suffix(&entry);
     r.suffix(&save);
@@ -247,14 +247,14 @@ fn render(body: &gtk::Box, i: Info) {
     let do_rename = move || {
         let name = e2.text().to_string();
         if !valid(&name) {
-            sub.set_text("letters, numbers and - only");
+            sub.set_text("Letters, numbers and - only");
             return;
         }
-        sub.set_text("renaming… (you may be asked for your password)");
+        sub.set_text("Renaming… (you may be asked for your password)");
         let sub2 = sub.clone();
         let n2 = name.clone();
         util::run("hostnamectl", &["set-hostname", &n2], move |o| {
-            sub2.set_text(&if o.ok { format!("renamed to {name} · new terminals pick it up") } else { format!("failed: {}", o.msg()) });
+            sub2.set_text(&if o.ok { format!("Renamed to {name} · new terminals pick it up") } else { format!("Failed: {}", o.msg()) });
         });
     };
     let dr = std::rc::Rc::new(do_rename);
@@ -265,12 +265,12 @@ fn render(body: &gtk::Box, i: Info) {
     });
     entry.connect_activate(move |_| dr());
 
-    let c = ui::section(body, "hardware");
+    let c = ui::section(body, "Hardware");
     if !i.model.is_empty() {
-        let r = ui::row("󰌢", "model", &i.model);
+        let r = ui::row("󰌢", "Model", &i.model);
         ui::add(&c, &r.row);
     }
-    for (ic, k, v) in [("\u{f4bc}", "processor", &i.cpu), ("󰢮", "graphics", &i.gpu), ("󰍹", "display", &i.display)] {
+    for (ic, k, v) in [("\u{f4bc}", "Processor", &i.cpu), ("󰢮", "Graphics", &i.gpu), ("󰍹", "Display", &i.display)] {
         if !v.is_empty() {
             let r = ui::row(ic, k, v);
             r.sub.set_ellipsize(gtk::pango::EllipsizeMode::None);
@@ -278,13 +278,13 @@ fn render(body: &gtk::Box, i: Info) {
             ui::add(&c, &r.row);
         }
     }
-    usage_row(&c, "󰍛", "memory", i.mem);
+    usage_row(&c, "󰍛", "Memory", i.mem);
     if i.swap.1 > 0 {
-        usage_row(&c, "󰾴", "swap", i.swap);
+        usage_row(&c, "󰾴", "Swap", i.swap);
     }
-    usage_row(&c, "󰋊", "disk  /", i.disk);
+    usage_row(&c, "󰋊", "Disk  /", i.disk);
 
-    let c = ui::section(body, "software");
+    let c = ui::section(body, "Software");
     for (ic, k, v) in [
         ("\u{f303}", "os", i.os.clone()),
         ("\u{f17c}", "kernel", i.kernel.clone()),
@@ -292,7 +292,7 @@ fn render(body: &gtk::Box, i: Info) {
         ("󰏖", "packages", i.pkgs.clone()),
         ("\u{f120}", "shell", i.shell.clone()),
         ("󰸉", "wallpaper", i.wall.clone()),
-        ("󰘚", "this app", format!("{} RAM", util::human_bytes(i.self_rss))),
+        ("󰘚", "This app", format!("{} RAM", util::human_bytes(i.self_rss))),
     ] {
         if !v.is_empty() {
             let r = ui::row(ic, k, "");
@@ -302,7 +302,7 @@ fn render(body: &gtk::Box, i: Info) {
     }
 
     // ---- what this app can use, and what's missing
-    let c = ui::section(body, "components");
+    let c = ui::section(body, "Components");
     for d in deps::ALL {
         if d.name == "asusctl" && !fs::read_to_string("/sys/class/dmi/id/sys_vendor").is_ok_and(|v| v.contains("ASUS")) {
             continue;
@@ -311,9 +311,9 @@ fn render(body: &gtk::Box, i: Info) {
         let r = ui::row(if ok { "󰄬" } else { "󰏗" }, d.name, d.why);
         if ok {
             r.icon.add_css_class("on");
-            r.suffix(&ui::label("installed", &["dim"]));
+            r.suffix(&ui::label("Installed", &["dim"]));
         } else if let Some(cmd) = deps::install_cmd(d) {
-            let b = ui::button("install", &[]);
+            let b = ui::button("Install", &[]);
             b.set_tooltip_text(Some(&cmd));
             b.connect_clicked(move |b| {
                 b.set_sensitive(false);
@@ -325,20 +325,20 @@ fn render(body: &gtk::Box, i: Info) {
             });
             r.suffix(&b);
         } else {
-            r.suffix(&ui::label("not available", &["dim"]));
+            r.suffix(&ui::label("Not available", &["dim"]));
         }
         ui::add(&c, &r.row);
     }
 }
 
 pub fn build() -> gtk::Widget {
-    let p = ui::page("󰋽", "about", "this machine");
+    let p = ui::page("󰋽", "About", "This machine");
     let copy = ui::button("󰆏  copy", &["flat"]);
-    copy.set_tooltip_text(Some("copy a plain-text summary"));
+    copy.set_tooltip_text(Some("Copy a plain-text summary"));
     p.actions.append(&copy);
 
     let body = gtk::Box::new(gtk::Orientation::Vertical, 8);
-    body.append(&ui::label("loading…", &["status"]));
+    body.append(&ui::label("Loading…", &["status"]));
     p.body.append(&body);
 
     let load = {
@@ -367,7 +367,8 @@ pub fn build() -> gtk::Widget {
                 util::human_bytes(i.mem.0), util::human_bytes(i.mem.1), i.display.replace('\n', "; "), i.uptime
             );
             b.clipboard().set_text(&txt);
-            b.set_label("󰄬  copied");
+            let done = ui::button("󰄬  copied", &[]);
+            b.set_child(done.child().as_ref());
         });
     });
     p.root.upcast()

@@ -75,7 +75,7 @@ fn apply_system_mode(mode: &str) {
 }
 
 pub fn build() -> gtk::Widget {
-    let p = ui::page("󰏘", "colours", "generated from your wallpaper by matugen · click a swatch to copy it");
+    let p = ui::page("󰏘", "Colours", "Generated from your wallpaper by matugen · click a swatch to copy it");
 
     if let Some(b) = deps::banner(&[&deps::MATUGEN], || crate::reload_page("colours")) {
         p.body.append(&b);
@@ -84,14 +84,14 @@ pub fn build() -> gtk::Widget {
     let o = read_opts();
 
     // ---- dark / light
-    let appearance = ui::section(&p.body, "mode");
+    let appearance = ui::section(&p.body, "Mode");
     let light = ui::switch(o.mode == "light");
-    let r = ui::row("󰔎", "light mode", "light or dark surfaces across the whole desktop");
+    let r = ui::row("󰔎", "Light mode", "Light or dark surfaces across the whole desktop");
     r.suffix(&light);
     ui::add(&appearance, &r.row);
 
     // ---- swatches
-    p.body.append(&ui::label("palette", &["section"]));
+    p.body.append(&ui::label("Palette", &["section"]));
     let card = ui::card();
     let grid = gtk::FlowBox::new();
     grid.set_selection_mode(gtk::SelectionMode::None);
@@ -111,13 +111,13 @@ pub fn build() -> gtk::Widget {
         let sw = gtk::Box::new(gtk::Orientation::Vertical, 0);
         sw.add_css_class("swatch");
         sw.add_css_class(&format!("sw-{role}"));
-        sw.set_size_request(96, -1);
-        let name = ui::label(&role.replace('_', " "), &["swatch-name"]);
+        sw.set_size_request(crate::theme::px(96), -1);
+        let name = ui::label(&util::sentence(&role.replace('_', " ")), &["swatch-name"]);
         let hex = ui::label(&theme::hex(role), &["hex"]);
         v.append(&sw);
         v.append(&name);
         v.append(&hex);
-        v.set_tooltip_text(Some("click to copy"));
+        v.set_tooltip_text(Some("Click to copy"));
         let click = gtk::GestureClick::new();
         let r = role.to_string();
         let hx = hex.clone();
@@ -126,7 +126,7 @@ pub fn build() -> gtk::Widget {
             if let Some(w) = g.widget() {
                 w.clipboard().set_text(&c);
             }
-            hx.set_text("copied");
+            hx.set_text("Copied");
             let hx2 = hx.clone();
             let r2 = r.clone();
             gtk::glib::timeout_add_local_once(std::time::Duration::from_millis(900), move || {
@@ -146,20 +146,20 @@ pub fn build() -> gtk::Widget {
     });
 
     // ---- generation options
-    let opts = ui::section(&p.body, "generation");
+    let opts = ui::section(&p.body, "Generation");
 
     let scheme_i = SCHEMES.iter().position(|s| *s == o.scheme).unwrap_or(0) as u32;
     let scheme = ui::dropdown(SCHEMES, scheme_i);
-    let r = ui::row("󰸌", "scheme", "how colours are picked from the image");
+    let r = ui::row("󰸌", "Scheme", "How colours are picked from the image");
     r.suffix(&scheme);
     ui::add(&opts, &r.row);
 
     let contrast = ui::slider(-1.0, 1.0, 0.1, 1, o.contrast);
-    let r = ui::row("󰆕", "contrast", "−1 soft · 0 standard · 1 maximum");
+    let r = ui::row("󰆕", "Contrast", "−1 soft · 0 standard · 1 maximum");
     r.suffix(&contrast);
     ui::add(&opts, &r.row);
 
-    let status = ui::label("changes apply to the current wallpaper now and every future one", &["status"]);
+    let status = ui::label("Changes apply to the current wallpaper now and every future one", &["status"]);
     p.body.append(&status);
 
     let regen = ui::button("󰑐  regenerate", &[]);
@@ -190,7 +190,7 @@ pub fn build() -> gtk::Widget {
                 return;
             }
             busy.set(true);
-            status.set_text("generating palette…");
+            status.set_text("Generating palette…");
             let c = format!("{:.1}", o.contrast);
             let s = format!("scheme-{}", o.scheme);
             let (st, b, again, re, mode) = (status.clone(), busy.clone(), pending.clone(), rerun.clone(), o.mode.clone());
@@ -210,10 +210,10 @@ pub fn build() -> gtk::Widget {
                             theme::write_own_palette(&out.stdout);
                         }
                         apply_system_mode(&mode);
-                        st.set_text("palette applied · saved for future wallpapers");
+                        st.set_text("Palette applied · saved for future wallpapers");
                         util::spawn("rice-sddm-sync", &[]);
                     } else {
-                        st.set_text(&format!("matugen failed: {}", out.msg()));
+                        st.set_text(&format!("Matugen failed: {}", out.msg()));
                     }
                 },
             );

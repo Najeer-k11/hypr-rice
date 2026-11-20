@@ -86,8 +86,8 @@ fn nvidia_state() -> Option<String> {
             return None;
         }
         Some(match rd(&d, "power/runtime_status").as_deref() {
-            Some("suspended") => "asleep · saving power".to_string(),
-            Some("active") => "awake · using extra power".to_string(),
+            Some("suspended") => "Asleep · saving power".to_string(),
+            Some("active") => "Awake · using extra power".to_string(),
             other => other.unwrap_or("unknown").to_string(),
         })
     })
@@ -126,22 +126,23 @@ fn set_rgb(cr: &cairo::Context, name: &str) {
 }
 
 fn draw_history(cr: &cairo::Context, w: f64, h: f64, rows: &[Sample], window: f64) {
-    let (top, ph) = (4.0, h - 20.0);
+    let z = crate::theme::zoom();
+    let (top, ph) = (4.0, h - 20.0 * z);
     let now = now_secs();
     let x_of = |t: f64| w * (t - (now - window)) / window;
-    cr.select_font_face("GeistMono Nerd Font", cairo::FontSlant::Normal, cairo::FontWeight::Normal);
-    cr.set_font_size(10.0);
+    cr.select_font_face("Google Sans Flex", cairo::FontSlant::Normal, cairo::FontWeight::Normal);
+    cr.set_font_size(10.0 * crate::theme::zoom());
 
     set_rgb(cr, "outline");
-    cr.move_to(0.0, h - 3.0);
+    cr.move_to(0.0, h - 3.0 * z);
     let _ = cr.show_text(if window > DAY { "7 days ago" } else { "24 hours ago" });
     if let Ok(e) = cr.text_extents("now") {
-        cr.move_to(w - e.width() - 1.0, h - 3.0);
+        cr.move_to(w - e.width() - 1.0, h - 3.0 * z);
         let _ = cr.show_text("now");
     }
     if rows.len() < 2 {
-        cr.set_font_size(12.0);
-        let msg = "collecting history · check back soon";
+        cr.set_font_size(12.0 * crate::theme::zoom());
+        let msg = "Collecting history · check back soon";
         if let Ok(e) = cr.text_extents(msg) {
             cr.move_to((w - e.width()) / 2.0, top + ph / 2.0);
             let _ = cr.show_text(msg);
@@ -202,7 +203,7 @@ fn history_section(body: &gtk::Box) {
     let window = Rc::new(Cell::new(DAY));
 
     let head = gtk::Box::new(gtk::Orientation::Horizontal, 4);
-    let title = ui::label("history", &["section"]);
+    let title = ui::label("History", &["section"]);
     title.set_hexpand(true);
     head.append(&title);
     let day = ui::button("24h", &["flat", "selected"]);
@@ -212,7 +213,7 @@ fn history_section(body: &gtk::Box) {
     body.append(&head);
 
     let chart = gtk::DrawingArea::new();
-    chart.set_content_height(130);
+    chart.set_content_height(crate::theme::px(130));
     chart.set_hexpand(true);
     chart.set_margin_top(10);
     chart.set_margin_bottom(6);
@@ -278,13 +279,13 @@ fn auto_row(card: &gtk::Box) {
     let text = |key: &str, default: &'static str| v[key].as_str().unwrap_or(default).replace('-', " ");
     let r = ui::row(
         "󰚥",
-        "switch automatically",
-        &format!("{} on battery · {} when plugged in", text("on_battery", "power-saver"), text("on_ac", "balanced")),
+        "Switch automatically",
+        &format!("{} on battery · {} when plugged in", text("On_battery", "Power-saver"), text("on_ac", "Balanced")),
     );
     let s = ui::switch(v["auto_profile"].as_bool().unwrap_or(true));
     s.connect_state_set(|_, on| {
         if !set_auto(on) {
-            util::notify("power", "couldn't save the auto switch setting");
+            util::notify("Power", "couldn't save the auto switch setting");
         }
         glib::Propagation::Proceed
     });
@@ -330,7 +331,7 @@ fn top_apps(prev: &CpuTicks, cur: &CpuTicks) -> Vec<(String, f64)> {
 fn render_apps(card: &gtk::Box, apps: &[(String, f64)]) {
     ui::clear(card);
     if apps.is_empty() {
-        card.append(&ui::label("measuring…", &["empty"]));
+        card.append(&ui::label("Measuring…", &["empty"]));
     }
     for (name, share) in apps {
         let row = gtk::Box::new(gtk::Orientation::Horizontal, 10);
@@ -354,9 +355,9 @@ fn render_apps(card: &gtk::Box, apps: &[(String, f64)]) {
 }
 
 fn apps_section(body: &gtk::Box) {
-    let card = ui::section(body, "busiest apps");
+    let card = ui::section(body, "Busiest apps");
     render_apps(&card, &[]);
-    body.append(&ui::label("share of cpu use, not measured watts", &["status"]));
+    body.append(&ui::label("Share of CPU use, not measured watts", &["status"]));
     let prev = Rc::new(RefCell::new(read_cpu_ticks()));
     let refresh = {
         let card = card.clone();
@@ -393,9 +394,9 @@ fn asus_backend() -> bool {
 }
 
 const PROFILES: &[(&str, &str, &str)] = &[
-    ("power-saver", "󰾆", "quiet & cool · longest battery"),
-    ("balanced", "󰾅", "the everyday default"),
-    ("performance", "󰓅", "full speed · fans and heat"),
+    ("power-saver", "󰾆", "Quiet & cool · longest battery"),
+    ("balanced", "󰾅", "The everyday default"),
+    ("performance", "󰓅", "Full speed · fans and heat"),
 ];
 
 struct Ui {
@@ -418,11 +419,11 @@ fn render(u: &Ui, b: Option<Bat>) {
         let lim = b.limit.filter(|l| *l < 100);
         let mut s = match b.status.as_str() {
             "Charging" => "charging".to_string(),
-            "Discharging" => "on battery".to_string(),
-            "Full" => "fully charged".to_string(),
+            "Discharging" => "On battery".to_string(),
+            "Full" => "Fully charged".to_string(),
             "Not charging" if b.ac => match lim {
-                Some(l) if b.capacity + 2 >= l => format!("plugged in · held at the {l}% limit"),
-                _ => "plugged in · not charging".to_string(),
+                Some(l) if b.capacity + 2 >= l => format!("Plugged in · held at the {l}% limit"),
+                _ => "Plugged in · not charging".to_string(),
             },
             other => other.to_lowercase(),
         };
@@ -446,8 +447,8 @@ fn render(u: &Ui, b: Option<Bat>) {
                 if b.model.is_empty() { String::new() } else { format!(" · {}", b.model) }
             ));
         }
-        u.draw.set_sub(&if b.power_w > 0.05 { format!("{:.1} W", b.power_w) } else { "idle".into() });
-        u.cycles.set_sub(&b.cycles.map(|c| c.to_string()).unwrap_or_else(|| "not reported".into()));
+        u.draw.set_sub(&if b.power_w > 0.05 { format!("{:.1} W", b.power_w) } else { "Idle".into() });
+        u.cycles.set_sub(&b.cycles.map(|c| c.to_string()).unwrap_or_else(|| "Not reported".into()));
         u.gpu.row.set_visible(b.gpu.is_some());
         u.gpu.set_sub(b.gpu.as_deref().unwrap_or(""));
         if let (Some((s, loading)), Some(l)) = (&u.limit, b.limit) {
@@ -465,7 +466,7 @@ fn render(u: &Ui, b: Option<Bat>) {
 }
 
 pub fn build() -> gtk::Widget {
-    let p = ui::page("󰁹", "power", "battery and power profiles");
+    let p = ui::page("󰁹", "Power", "Battery and power profiles");
     let bat = fetch();
 
     // ---- battery hero
@@ -485,37 +486,37 @@ pub fn build() -> gtk::Widget {
     hero.append(&h);
 
     let details = ui::card();
-    let health = ui::row("󰂑", "health", "");
-    let draw = ui::row("󱐋", "power draw", "");
-    let cycles = ui::row("󰑓", "charge cycles", "");
+    let health = ui::row("󰂑", "Health", "");
+    let draw = ui::row("󱐋", "Power draw", "");
+    let cycles = ui::row("󰑓", "Charge cycles", "");
     ui::add(&details, &health.row);
     ui::add(&details, &draw.row);
     ui::add(&details, &cycles.row);
-    let gpu = ui::row("󰢮", "nvidia gpu", "");
+    let gpu = ui::row("󰢮", "NVIDIA GPU", "");
     ui::add(&details, &gpu.row);
 
     if bat.is_some() {
         p.body.append(&hero);
-        p.body.append(&ui::label("battery", &["section"]));
+        p.body.append(&ui::label("Battery", &["section"]));
         p.body.append(&details);
         if deps::have("rice-battery") {
             history_section(&p.body);
         }
     } else {
         let c = ui::card();
-        c.append(&ui::label("no battery found · this looks like a desktop", &["empty"]));
+        c.append(&ui::label("No battery found · this looks like a desktop", &["empty"]));
         p.body.append(&c);
     }
 
     // ---- charge limit
     let mut limit = None;
     if let Some(cur) = bat.as_ref().and_then(|b| b.limit) {
-        let c = ui::section(&p.body, "charge limit");
+        let c = ui::section(&p.body, "Charge limit");
         let asus = asus_backend();
         let s = ui::slider(20.0, 100.0, 5.0, 0, cur as f64);
         let r = ui::row(
             "󰂃",
-            "stop charging at",
+            "Stop charging at",
             if asus { "80% is kinder to the battery" } else { "80% is kinder to the battery · resets at boot" },
         );
         r.suffix(&s);
@@ -531,8 +532,8 @@ pub fn build() -> gtk::Widget {
             let v = ((s.value() / 5.0).round() * 5.0) as u32;
             let st = st.clone();
             deb.run(700, move || {
-                st.set_text("setting limit…");
-                let cb = move |o: util::Out| st.set_text(&if o.ok { format!("charging stops at {v}%") } else { format!("failed: {}", o.msg()) });
+                st.set_text("Setting limit…");
+                let cb = move |o: util::Out| st.set_text(&if o.ok { format!("Charging stops at {v}%") } else { format!("Failed: {}", o.msg()) });
                 if asus_backend() {
                     util::run("asusctl", &["battery", "limit", &v.to_string()], cb);
                 } else if let Some(d) = battery_dir() {
@@ -542,13 +543,13 @@ pub fn build() -> gtk::Widget {
             });
         });
         if asus {
-            let once = ui::button("charge to 100% once", &["flat"]);
-            once.set_tooltip_text(Some("one full charge, then back to the limit"));
+            let once = ui::button("Charge to 100% once", &["flat"]);
+            once.set_tooltip_text(Some("One full charge, then back to the limit"));
             let st = status.clone();
             once.connect_clicked(move |_| {
                 let st = st.clone();
                 util::run("asusctl", &["battery", "oneshot"], move |o| {
-                    st.set_text(if o.ok { "charging to 100% this once" } else { "failed" })
+                    st.set_text(if o.ok { "Charging to 100% this once" } else { "Failed" })
                 });
             });
             r.suffix(&once);
@@ -558,7 +559,7 @@ pub fn build() -> gtk::Widget {
     }
 
     // ---- power profiles
-    p.body.append(&ui::label("power profile", &["section"]));
+    p.body.append(&ui::label("Power profile", &["section"]));
     if let Some(b) = deps::banner(&[&deps::PPD], || crate::reload_page("power")) {
         p.body.append(&b);
     }
@@ -591,7 +592,7 @@ pub fn build() -> gtk::Widget {
                 b.add_css_class("selected");
                 util::run("powerprofilesctl", &["set", &id2], |o| {
                     if !o.ok {
-                        util::notify("power profile", &o.msg());
+                        util::notify("Power profile", &o.msg());
                     }
                     util::spawn("pkill", &["-RTMIN+8", "waybar"]); // rice bar shows the profile
                 });

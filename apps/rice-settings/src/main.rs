@@ -14,7 +14,7 @@ mod util;
 
 use gtk::prelude::*;
 use gtk::{gdk, gio, glib};
-use std::cell::RefCell;
+use std::{cell::RefCell, rc::Rc};
 
 struct PageDef {
     id: &'static str,
@@ -26,16 +26,16 @@ struct PageDef {
 }
 
 const PAGES: &[PageDef] = &[
-    PageDef { id: "wallpaper", aliases: &["wall", "wallpapers"], icon: "󰸉", title: "wallpaper", group: "personalise", build: pages::wallpaper::build },
-    PageDef { id: "colours", aliases: &["colors", "palette", "color", "colour"], icon: "󰏘", title: "colours", group: "personalise", build: pages::colours::build },
-    PageDef { id: "appearance", aliases: &["windows", "look", "radius"], icon: "\u{f1fc}", title: "appearance", group: "personalise", build: pages::appearance::build },
-    PageDef { id: "panel", aliases: &["bar", "waybar", "panels"], icon: "󰕮", title: "panel", group: "personalise", build: pages::panel::build },
-    PageDef { id: "display", aliases: &["monitor", "monitors", "scale"], icon: "󰍹", title: "display", group: "system", build: pages::display::build },
-    PageDef { id: "wifi", aliases: &["wi-fi", "network", "net"], icon: "󰤨", title: "wi-fi", group: "connections", build: pages::wifi::build },
-    PageDef { id: "bluetooth", aliases: &["bt"], icon: "󰂯", title: "bluetooth", group: "connections", build: pages::bluetooth::build },
-    PageDef { id: "power", aliases: &["battery", "profile", "profiles"], icon: "󰁹", title: "power", group: "system", build: pages::power::build },
-    PageDef { id: "keyboard", aliases: &["kbd", "rgb", "backlight"], icon: "󰌌", title: "keyboard", group: "system", build: pages::keyboard::build },
-    PageDef { id: "about", aliases: &["system", "info"], icon: "󰋽", title: "about", group: "system", build: pages::about::build },
+    PageDef { id: "wallpaper", aliases: &["wall", "wallpapers"], icon: "󰸉", title: "Wallpaper", group: "personalise", build: pages::wallpaper::build },
+    PageDef { id: "colours", aliases: &["colors", "palette", "color", "colour"], icon: "󰏘", title: "Colours", group: "personalise", build: pages::colours::build },
+    PageDef { id: "appearance", aliases: &["windows", "look", "radius"], icon: "\u{f1fc}", title: "Appearance", group: "personalise", build: pages::appearance::build },
+    PageDef { id: "panel", aliases: &["bar", "waybar", "panels"], icon: "󰕮", title: "Panel", group: "personalise", build: pages::panel::build },
+    PageDef { id: "display", aliases: &["monitor", "monitors", "scale"], icon: "󰍹", title: "Display", group: "system", build: pages::display::build },
+    PageDef { id: "wifi", aliases: &["wi-fi", "network", "net"], icon: "󰤨", title: "Wi-Fi", group: "connections", build: pages::wifi::build },
+    PageDef { id: "bluetooth", aliases: &["bt"], icon: "󰂯", title: "Bluetooth", group: "connections", build: pages::bluetooth::build },
+    PageDef { id: "power", aliases: &["battery", "profile", "profiles"], icon: "󰁹", title: "Power", group: "system", build: pages::power::build },
+    PageDef { id: "keyboard", aliases: &["kbd", "rgb", "backlight"], icon: "󰌌", title: "Keyboard", group: "system", build: pages::keyboard::build },
+    PageDef { id: "about", aliases: &["system", "info"], icon: "󰋽", title: "About", group: "system", build: pages::about::build },
 ];
 
 const GROUPS: &[&str] = &["personalise", "connections", "system"];
@@ -110,13 +110,17 @@ fn present(app: &gtk::Application, page: Option<&str>) {
 }
 
 fn build_window(app: &gtk::Application) -> gtk::Window {
+    // first guess at the zoom: the first monitor (corrected once the window is on one)
+    let display = gdk::Display::default().expect("no display");
+    let first = display.monitors().item(0).and_downcast::<gdk::Monitor>();
+    theme::set_zoom(theme::zoom_for(first.as_ref(), None));
     theme::init();
 
     let win = gtk::ApplicationWindow::builder()
         .application(app)
         .title("settings")
-        .default_width(960)
-        .default_height(640)
+        .default_width(theme::px(960))
+        .default_height(theme::px(640))
         .decorated(false) // Hyprland draws the border; no CSD title bar
         .build();
     win.add_css_class("rice");
@@ -124,12 +128,12 @@ fn build_window(app: &gtk::Application) -> gtk::Window {
     // ---- sidebar
     let side = gtk::Box::new(gtk::Orientation::Vertical, 0);
     side.add_css_class("sidebar");
-    side.set_size_request(196, -1);
+    side.set_size_request(theme::px(196), -1);
 
     let brand = gtk::Box::new(gtk::Orientation::Horizontal, 10);
     brand.add_css_class("brand");
     brand.append(&ui::label("\u{f013}", &["brand-icon"]));
-    brand.append(&ui::label("settings", &["brand-title"]));
+    brand.append(&ui::label("Settings", &["brand-title"]));
     side.append(&brand);
 
     let nav = gtk::ListBox::new();
@@ -141,7 +145,7 @@ fn build_window(app: &gtk::Application) -> gtk::Window {
         head.set_selectable(false);
         head.set_activatable(false);
         head.set_focusable(false);
-        head.set_child(Some(&ui::label(g, &[])));
+        head.set_child(Some(&ui::label(&util::sentence(g), &[])));
         nav.append(&head);
         for p in PAGES.iter().filter(|p| p.group == *g) {
             let row = gtk::ListBoxRow::new();
@@ -160,7 +164,7 @@ fn build_window(app: &gtk::Application) -> gtk::Window {
     navscroll.set_vexpand(true);
     navscroll.set_child(Some(&nav));
     side.append(&navscroll);
-    side.append(&ui::label("esc to close", &["sidebar-foot"]));
+    side.append(&ui::label("Esc to close", &["sidebar-foot"]));
 
     // ---- pages: placeholders now, real widgets on first visit
     let stack = gtk::Stack::new();
@@ -201,6 +205,34 @@ fn build_window(app: &gtk::Application) -> gtk::Window {
         glib::Propagation::Proceed
     });
     win.add_controller(keys);
+
+    // Hyprland scale changed / moved to another monitor -> re-zoom and rebuild what's open
+    let w = win.clone();
+    win.connect_realize(move |_| {
+        let Some(surf) = w.surface() else { return };
+        let (w2, side2) = (w.clone(), side.clone());
+        let rezoom = Rc::new(move |s: &gdk::Surface| {
+            let mon = s.display().monitor_at_surface(s);
+            if theme::set_zoom(theme::zoom_for(mon.as_ref(), Some(s.scale()))) {
+                side2.set_size_request(theme::px(196), -1);
+                w2.set_default_size(theme::px(960), theme::px(640));
+                if w2.is_mapped() {
+                    // let Hyprland finish its own scale change first
+                    glib::timeout_add_local_once(std::time::Duration::from_millis(250), || {
+                        hypr::fit_window(theme::px(960), theme::px(640))
+                    });
+                }
+                for p in PAGES {
+                    reload_page(p.id);
+                }
+            }
+        });
+        let r = rezoom.clone();
+        surf.connect_enter_monitor(move |s, _| r(s));
+        let r = rezoom.clone();
+        surf.connect_scale_notify(move |s| r(s));
+        rezoom(&surf);
+    });
 
     NAV.with(|n| *n.borrow_mut() = Some(nav));
     STACK.with(|s| *s.borrow_mut() = Some(stack));

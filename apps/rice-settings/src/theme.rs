@@ -6,7 +6,11 @@
 use crate::{hypr, ui, util};
 use gtk::prelude::*;
 use gtk::{gdk, gio};
-use std::{cell::RefCell, fs, path::PathBuf};
+use std::{
+    cell::{Cell, RefCell},
+    fs,
+    path::PathBuf,
+};
 
 pub struct Vars {
     pub radius: f64,
@@ -22,6 +26,87 @@ thread_local! {
     static PALETTE: RefCell<Vec<(String, String)>> = const { RefCell::new(Vec::new()) };
     static LISTENERS: RefCell<Vec<Box<dyn Fn()>>> = RefCell::new(Vec::new());
     static MONITORS: RefCell<Vec<gio::FileMonitor>> = const { RefCell::new(Vec::new()) };
+    static ZOOM: Cell<f64> = const { Cell::new(1.0) };
+}
+
+// ---------- zoom: keep the app's size steady when the Hyprland scale changes ----------
+//
+// Wayland apps grow with the monitor scale, so 1.25 made this window (and its text) 25% bigger
+// and 0.8 made it tiny. Instead every size in the stylesheet is multiplied by `zoom`:
+//   zoom = natural / scale
+// where `natural` is the scale the panel's pixel density calls for (1 for ~140 dpi and below,
+// 2 for a 15" 4K, …). So the app looks the same at any scale the user picks, and HiDPI
+// screens still get a sensibly sized window. RICE_SETTINGS_ZOOM=<n> forces a value.
+
+/// Current zoom factor (1.0 = sizes as written).
+pub fn zoom() -> f64 {
+    ZOOM.with(Cell::get)
+}
+
+/// A pixel size from the code, zoomed.
+pub fn px(v: i32) -> i32 {
+    (v as f64 * zoom()).round() as i32
+}
+
+/// Zoom for `mon` at `scale` (default: the monitor's own; a surface learns a new scale before
+/// its monitor object does), or 1.0 when the monitor reports nothing useful.
+pub fn zoom_for(mon: Option<&gdk::Monitor>, scale: Option<f64>) -> f64 {
+    if let Some(z) = std::env::var("RICE_SETTINGS_ZOOM").ok().and_then(|v| v.parse::<f64>().ok()) {
+        return z.clamp(0.4, 3.0);
+    }
+    let Some(m) = mon else { return 1.0 };
+    // geometry × monitor scale = physical pixels, consistent even mid-change
+    let (w, mm) = (m.geometry().width() as f64 * m.scale(), m.width_mm() as f64);
+    let scale = scale.unwrap_or_else(|| m.scale());
+    if scale <= 0.0 || w <= 0.0 || mm < 50.0 {
+        return 1.0; // projectors / bogus EDID: plain Wayland behaviour
+    }
+    let dpi = w / (mm / 25.4);
+    let natural = ((dpi / 140.0) * 4.0).round().max(4.0) / 4.0; // nearest 0.25, at least 1
+    ((natural / scale) * 100.0).round().clamp(40.0, 300.0) / 100.0
+}
+
+/// Set the zoom; returns true (and restyles) when it changed.
+pub fn set_zoom(z: f64) -> bool {
+    if (zoom() - z).abs() < 0.005 {
+        return false;
+    }
+    ZOOM.with(|c| c.set(z));
+    rebuild();
+    true
+}
+
+/// Multiply every `<number>px` in `css` by `z`.
+fn zoom_css(css: &str, z: f64) -> String {
+    if (z - 1.0).abs() < 0.005 {
+        return css.to_string();
+    }
+    let b = css.as_bytes();
+    let mut out = String::with_capacity(css.len() + 256);
+    let (mut i, mut last) = (0, 0);
+    while i < b.len() {
+        let starts = (b[i].is_ascii_digit() || (b[i] == b'.' && b.get(i + 1).is_some_and(u8::is_ascii_digit)))
+            && (i == 0 || !(b[i - 1].is_ascii_alphanumeric() || b[i - 1] == b'_' || b[i - 1] == b'#' || b[i - 1] == b'-' && i >= 2 && b[i - 2].is_ascii_alphanumeric()));
+        if starts {
+            let mut j = i;
+            while j < b.len() && (b[j].is_ascii_digit() || b[j] == b'.') {
+                j += 1;
+            }
+            if css[j..].starts_with("px") {
+                if let Ok(v) = css[i..j].parse::<f64>() {
+                    out.push_str(&css[last..i]);
+                    let n = (v * z * 100.0).round() / 100.0;
+                    out.push_str(&format!("{n}"));
+                    last = j;
+                }
+            }
+            i = j.max(i + 1);
+        } else {
+            i += 1;
+        }
+    }
+    out.push_str(&css[last..]);
+    out
 }
 
 const FALLBACK: &[(&str, &str)] = &[
@@ -156,7 +241,7 @@ fn rebuild() {
             .replace("{{AO}}", &format!("{}", v.active))
             .replace("{{IO}}", &format!("{}", v.inactive))
     });
-    css.push_str(&app);
+    css.push_str(&zoom_css(&app, zoom()));
     PROVIDER.with(|p| p.load_from_string(&css));
 }
 
@@ -179,8 +264,13 @@ pub fn on_change(f: impl Fn() + 'static) {
 
 const APP_CSS: &str = r#"
 window.rice, window.rice popover, window.rice tooltip {
+  font-family: "Google Sans Flex", "Google Sans", "GeistMono Nerd Font", sans-serif;
+  font-size: 13px;
+}
+/* nerd-font glyphs and numbers that should line up stay on the mono font */
+.brand-icon, .nav-icon, .page-icon, .row-icon, .profile-icon, .hero-logo, button.icon, .btn-icon,
+.hex, scale > value {
   font-family: "GeistMono Nerd Font", monospace;
-  font-size: 12.5px;
 }
 window.rice { background: @surface; color: @on_surface; }
 
@@ -245,6 +335,7 @@ button.flat { background: transparent; border-color: transparent; }
 button.flat:hover { background: @surface_container_high; }
 button.danger:hover { color: @error; border-color: @error; }
 button.icon { padding: 4px 8px; font-size: 14px; }
+.btn-icon { margin-right: 4px; }
 
 switch {
   background: @surface_container_highest; border: 1px solid @outline_variant;
@@ -364,3 +455,16 @@ button.led:hover { border-color: @on_surface; }
   border-radius: 999px; padding: 2px 10px; font-size: 11px;
 }
 "#;
+
+#[cfg(test)]
+mod tests {
+    use super::zoom_css;
+
+    #[test]
+    fn zooms_px_only() {
+        let css = ".a { font-size: 12.5px; padding: 4px 12px; margin: -6px; color: #a6c8ff; border-radius: 999px; opacity: 0.5; }";
+        let out = zoom_css(css, 0.8);
+        assert_eq!(out, ".a { font-size: 10px; padding: 3.2px 9.6px; margin: -4.8px; color: #a6c8ff; border-radius: 799.2px; opacity: 0.5; }");
+        assert_eq!(zoom_css(".kc-red { background: #ff0000; } .x{min-width:24px}", 2.0), ".kc-red { background: #ff0000; } .x{min-width:48px}");
+    }
+}

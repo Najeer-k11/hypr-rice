@@ -95,7 +95,7 @@ fn act(ui: &Rc<Ui>, msg: &str, prog: &str, args: &[&str]) {
     ui.status.set_text(msg);
     let u = ui.clone();
     util::run(prog, args, move |o| {
-        u.status.set_text(&if o.ok { String::new() } else { format!("failed: {}", o.msg()) });
+        u.status.set_text(&if o.ok { String::new() } else { format!("Failed: {}", o.msg()) });
         refresh(&u);
     });
 }
@@ -107,21 +107,21 @@ fn render(ui: &Rc<Ui>, d: Data) {
     ui.loading.set(false);
     let n_conn = d.devs.iter().filter(|x| x.connected).count();
     ui.sub.set_text(&match (d.controller, d.powered) {
-        (false, _) => "no bluetooth adapter found".into(),
-        (_, false) => "bluetooth is off".into(),
+        (false, _) => "No Bluetooth adapter found".into(),
+        (_, false) => "Bluetooth is off".into(),
         _ => format!("{} · {} connected", d.alias, n_conn),
     });
     ui::clear(&ui.paired);
     ui::clear(&ui.found);
     if !d.powered {
-        ui.paired.append(&ui::label("turn bluetooth on to see devices", &["empty"]));
+        ui.paired.append(&ui::label("Turn Bluetooth on to see devices", &["empty"]));
         ui.found.append(&ui::label("—", &["empty"]));
         return;
     }
     for dv in d.devs {
         let sub = match (dv.connected, dv.paired) {
-            (true, _) => format!("connected{}", dv.battery.map(|b| format!(" · 󰥉 {b}%")).unwrap_or_default()),
-            (_, true) => "paired".into(),
+            (true, _) => format!("Connected{}", dv.battery.map(|b| format!(" · 󰥉 {b}%")).unwrap_or_default()),
+            (_, true) => "Paired".into(),
             _ => dv.mac.clone(),
         };
         let r = ui::row(dev_icon(&dv.icon), &dv.name, &sub);
@@ -131,37 +131,37 @@ fn render(ui: &Rc<Ui>, d: Data) {
         let m = dv.mac.clone();
         if dv.paired {
             let rm = ui::button("󰆴", &["flat", "danger", "icon"]);
-            rm.set_tooltip_text(Some("remove / unpair"));
+            rm.set_tooltip_text(Some("Remove / unpair"));
             let (u, m2) = (ui.clone(), m.clone());
-            rm.connect_clicked(move |_| act(&u, "removing…", "bluetoothctl", &["remove", &m2]));
+            rm.connect_clicked(move |_| act(&u, "Removing…", "bluetoothctl", &["remove", &m2]));
             r.suffix(&rm);
-            let (label, verb, msg) = if dv.connected { ("disconnect", "disconnect", "disconnecting…") } else { ("connect", "connect", "connecting…") };
+            let (label, verb, msg) = if dv.connected { ("Disconnect", "disconnect", "Disconnecting…") } else { ("Connect", "connect", "Connecting…") };
             let b = ui::button(label, &[]);
             let u = ui.clone();
             b.connect_clicked(move |_| act(&u, msg, "bluetoothctl", &[verb, &m]));
             r.suffix(&b);
             ui::add(&ui.paired, &r.row);
         } else {
-            let b = ui::button("pair", &["suggested"]);
+            let b = ui::button("Pair", &["suggested"]);
             let u = ui.clone();
             b.connect_clicked(move |_| {
                 let cmd = format!("bluetoothctl --timeout 20 pair {m} && bluetoothctl trust {m} && bluetoothctl connect {m}");
-                act(&u, "pairing… (confirm on the device if asked)", "sh", &["-c", &cmd]);
+                act(&u, "Pairing… (confirm on the device if asked)", "sh", &["-c", &cmd]);
             });
             r.suffix(&b);
             ui::add(&ui.found, &r.row);
         }
     }
     if ui.paired.first_child().is_none() {
-        ui.paired.append(&ui::label("no paired devices", &["empty"]));
+        ui.paired.append(&ui::label("No paired devices", &["empty"]));
     }
     if ui.found.first_child().is_none() {
-        ui.found.append(&ui::label("nothing nearby yet · press scan", &["empty"]));
+        ui.found.append(&ui::label("Nothing nearby yet · press scan", &["empty"]));
     }
 }
 
 pub fn build() -> gtk::Widget {
-    let p = ui::page("󰂯", "bluetooth", "");
+    let p = ui::page("󰂯", "Bluetooth", "");
     let scan = ui::button("󰂰  scan", &[]);
     p.actions.append(&scan);
 
@@ -173,15 +173,15 @@ pub fn build() -> gtk::Widget {
     }
     let top = ui::card();
     let sw = ui::switch(false);
-    let r = ui::row("󰂯", "bluetooth", "adapter power");
+    let r = ui::row("󰂯", "Bluetooth", "Adapter power");
     r.icon.add_css_class("on");
     r.suffix(&sw);
     top.append(&r.row);
     p.body.append(&top);
 
-    let paired = ui::section(&p.body, "my devices");
-    paired.append(&ui::label("loading…", &["empty"]));
-    let found = ui::section(&p.body, "nearby");
+    let paired = ui::section(&p.body, "My devices");
+    paired.append(&ui::label("Loading…", &["empty"]));
+    let found = ui::section(&p.body, "Nearby");
     let status = ui::label("", &["status"]);
     p.body.append(&status);
 
@@ -193,15 +193,15 @@ pub fn build() -> gtk::Widget {
             return;
         }
         if s.is_active() {
-            act(&u, "turning on…", "sh", &["-c", "rfkill unblock bluetooth; sleep 0.3; bluetoothctl power on"]);
+            act(&u, "Turning on…", "sh", &["-c", "rfkill unblock bluetooth; sleep 0.3; bluetoothctl power on"]);
         } else {
-            act(&u, "turning off…", "bluetoothctl", &["power", "off"]);
+            act(&u, "Turning off…", "bluetoothctl", &["power", "off"]);
         }
     });
     let u = ui.clone();
     scan.connect_clicked(move |b| {
         b.set_sensitive(false);
-        u.status.set_text("scanning for 10 s…");
+        u.status.set_text("Scanning for 10 s…");
         let (u2, b2) = (u.clone(), b.clone());
         util::run("bluetoothctl", &["--timeout", "10", "scan", "on"], move |_| {
             b2.set_sensitive(true);

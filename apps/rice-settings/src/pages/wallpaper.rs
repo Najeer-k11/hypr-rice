@@ -79,10 +79,10 @@ fn apply_builtin(img: &str) -> Result<(), String> {
         }
         ok(Command::new("hyprctl").args(["hyprpaper", "reload", &format!(",{img}")]))
     } else {
-        return Err("no wallpaper tool (awww / swww / hyprpaper)".into());
+        return Err("No wallpaper tool (awww / swww / hyprpaper)".into());
     };
     if !set {
-        return Err("couldn't set the wallpaper".into());
+        return Err("Couldn't set the wallpaper".into());
     }
     let _ = fs::create_dir_all(state_file().parent().unwrap());
     let _ = fs::write(state_file(), format!("{img}\n"));
@@ -96,7 +96,7 @@ fn apply_builtin(img: &str) -> Result<(), String> {
             .output()
             .map_err(|e| e.to_string())?;
         if !theme::write_own_palette(&String::from_utf8_lossy(&out.stdout)) {
-            return Err("matugen gave no palette".into());
+            return Err("Matugen gave no palette".into());
         }
     }
     Ok(())
@@ -158,7 +158,7 @@ fn subtitle(n: usize, dir: &Path) -> String {
 pub fn build() -> gtk::Widget {
     let dir = wall_dir();
     let files = list(&dir);
-    let p = ui::page("󰸉", "wallpaper", &subtitle(files.len(), &dir));
+    let p = ui::page("󰸉", "Wallpaper", &subtitle(files.len(), &dir));
 
     let random = ui::button("󰒝  random", &[]);
     let pool = files.clone();
@@ -166,7 +166,7 @@ pub fn build() -> gtk::Widget {
         // tiny xorshift on the clock: no rand crate needed
         let n = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.subsec_nanos()).unwrap_or(7) as usize;
         if let Some(f) = pool.get(n % pool.len().max(1)) {
-            apply(&f.to_string_lossy(), |e| if let Some(e) = e { util::notify("wallpaper", &e) });
+            apply(&f.to_string_lossy(), |e| if let Some(e) = e { util::notify("Wallpaper", &e) });
         }
     });
     let folder = ui::button("\u{f07b}  folder", &["flat"]);
@@ -181,13 +181,13 @@ pub fn build() -> gtk::Widget {
         }
     }
     p.body.append(&ui::label(
-        "colours across the desktop are generated from the wallpaper you pick",
+        "Colours across the desktop are generated from the wallpaper you pick",
         &["status"],
     ));
 
     if files.is_empty() {
         let c = ui::card();
-        c.append(&ui::label(&format!("no images in {}", util::tilde(&dir)), &["empty"]));
+        c.append(&ui::label(&format!("No images in {}", util::tilde(&dir)), &["empty"]));
         p.body.append(&c);
         return p.root.upcast();
     }
@@ -212,7 +212,7 @@ pub fn build() -> gtk::Widget {
         frame.add_css_class("wall-frame");
         frame.set_overflow(gtk::Overflow::Hidden);
         let sizer = gtk::Box::new(gtk::Orientation::Vertical, 0);
-        sizer.set_size_request(168, 100);
+        sizer.set_size_request(crate::theme::px(168), crate::theme::px(100));
         frame.set_child(Some(&sizer));
         let pic = gtk::Picture::new();
         pic.set_content_fit(gtk::ContentFit::Cover);
@@ -242,7 +242,7 @@ pub fn build() -> gtk::Widget {
         child.add_css_class("current");
         apply(&path, |e| {
             if let Some(e) = e {
-                util::notify("wallpaper failed", &e);
+                util::notify("Wallpaper failed", &e);
             }
         });
     });

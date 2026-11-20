@@ -22,7 +22,7 @@ fn mock(active: bool) -> gtk::Box {
         if i == 0 && active {
             l.add_css_class("accent");
         }
-        l.set_size_request(width, 6);
+        l.set_size_request(crate::theme::px(width), crate::theme::px(6));
         l.set_halign(gtk::Align::Start);
         w.append(&l);
     }
@@ -80,7 +80,7 @@ fn switch_row(
 }
 
 pub fn build() -> gtk::Widget {
-    let p = ui::page("\u{f1fc}", "appearance", "window corners, borders, gaps and effects · applied live");
+    let p = ui::page("\u{f1fc}", "Appearance", "Window corners, borders, gaps and effects · applied live");
     let refs: Refreshers = Rc::default();
     let loading = Rc::new(Cell::new(false));
 
@@ -100,49 +100,49 @@ pub fn build() -> gtk::Widget {
     p.body.append(&desk);
 
     // ---- corners
-    let c = ui::section(&p.body, "corners");
-    slider_row(&c, &refs, &loading, "󰢡", "corner radius", "window rounding in px · this app and the bar follow it",
+    let c = ui::section(&p.body, "Corners");
+    slider_row(&c, &refs, &loading, "󰢡", "Corner radius", "Window rounding in px · this app and the bar follow it",
         "decoration:rounding", 0.0, 24.0, 1.0, 0, |v| {
             theme::set_var(|t| t.radius = v);
             super::panel::sync_radius(v.round() as i64);
         });
-    slider_row(&c, &refs, &loading, "󰘸", "corner shape", "2 = circle · higher = squircle",
+    slider_row(&c, &refs, &loading, "󰘸", "Corner shape", "2 = circle · higher = squircle",
         "decoration:rounding_power", 1.0, 10.0, 0.5, 1, |_| {});
 
     // ---- borders & gaps
-    let c = ui::section(&p.body, "borders & gaps");
-    slider_row(&c, &refs, &loading, "󰢤", "border width", "coloured outline around windows",
+    let c = ui::section(&p.body, "Borders & gaps");
+    slider_row(&c, &refs, &loading, "󰢤", "Border width", "Coloured outline around windows",
         "general:border_size", 0.0, 8.0, 1.0, 0, |v| theme::set_var(|t| t.border = v));
     let (d, cc) = (desk.clone(), col.clone());
-    slider_row(&c, &refs, &loading, "󰕰", "inner gaps", "space between windows",
+    slider_row(&c, &refs, &loading, "󰕰", "Inner gaps", "Space between windows",
         "general:gaps_in", 0.0, 20.0, 1.0, 0, move |v| {
             d.set_spacing(v as i32 * 2);
             cc.set_spacing(v as i32 * 2);
         });
-    slider_row(&c, &refs, &loading, "󰹑", "outer gaps", "space between windows and screen edges",
+    slider_row(&c, &refs, &loading, "󰹑", "Outer gaps", "Space between windows and screen edges",
         "general:gaps_out", 0.0, 40.0, 1.0, 0, |v| theme::set_var(|t| t.gaps_out = v));
 
     // ---- effects
-    let c = ui::section(&p.body, "effects");
-    slider_row(&c, &refs, &loading, "󰌁", "focused opacity", "",
+    let c = ui::section(&p.body, "Effects");
+    slider_row(&c, &refs, &loading, "󰌁", "Focused opacity", "",
         "decoration:active_opacity", 0.5, 1.0, 0.01, 2, |v| theme::set_var(|t| t.active = v));
-    slider_row(&c, &refs, &loading, "󰌀", "unfocused opacity", "",
+    slider_row(&c, &refs, &loading, "󰌀", "Unfocused opacity", "",
         "decoration:inactive_opacity", 0.5, 1.0, 0.01, 2, |v| theme::set_var(|t| t.inactive = v));
-    switch_row(&c, &refs, &loading, "󰂵", "blur", "blur behind transparent windows · costs GPU",
+    switch_row(&c, &refs, &loading, "󰂵", "Blur", "Blur behind transparent windows · costs GPU",
         "decoration:blur:enabled");
-    switch_row(&c, &refs, &loading, "󰘷", "shadows", "drop shadows under windows",
+    switch_row(&c, &refs, &loading, "󰘷", "Shadows", "Drop shadows under windows",
         "decoration:shadow:enabled");
-    switch_row(&c, &refs, &loading, "󰃝", "dim unfocused", "darken windows you're not using",
+    switch_row(&c, &refs, &loading, "󰃝", "Dim unfocused", "Darken windows you're not using",
         "decoration:dim_inactive");
-    switch_row(&c, &refs, &loading, "󰶘", "animations", "open, close, workspace slide",
+    switch_row(&c, &refs, &loading, "󰶘", "Animations", "Open, close, workspace slide",
         "animations:enabled");
 
     // ---- layout
-    let c = ui::section(&p.body, "layout");
+    let c = ui::section(&p.body, "Layout");
     let layouts = ["dwindle", "master"];
     let cur = hypr::opt_s("general:layout", "dwindle");
     let dd = ui::dropdown(&layouts, layouts.iter().position(|l| *l == cur).unwrap_or(0) as u32);
-    let r = ui::row("󰙀", "tiling layout", "dwindle splits in a spiral · master keeps one big window");
+    let r = ui::row("󰙀", "Tiling layout", "Dwindle splits in a spiral · master keeps one big window");
     r.suffix(&dd);
     ui::add(&c, &r.row);
     let l = loading.clone();
@@ -158,13 +158,13 @@ pub fn build() -> gtk::Widget {
     }));
 
     p.body.append(&ui::label(
-        &format!("saved to {} · loaded after {}", crate::util::tilde(&hypr::override_path()), crate::util::tilde(&hypr::main_config())),
+        &format!("Saved to {} · loaded after {}", crate::util::tilde(&hypr::override_path()), crate::util::tilde(&hypr::main_config())),
         &["status"],
     ));
 
     // ---- reset: drop overrides, reload hyprland, read the values back
     let reset = ui::button("󰦛  reset to config", &["flat"]);
-    reset.set_tooltip_text(Some("forget changes made here and use hyprland.lua values"));
+    reset.set_tooltip_text(Some("Forget changes made here and use hyprland.lua values"));
     let (refs2, l) = (refs.clone(), loading.clone());
     reset.connect_clicked(move |_| {
         hypr::reset_options();

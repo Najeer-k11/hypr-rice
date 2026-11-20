@@ -112,7 +112,7 @@ fn refresh(ui: &Rc<Ui>, rescan: bool) {
         return;
     }
     if rescan {
-        ui.status.set_text("scanning…");
+        ui.status.set_text("Scanning…");
     }
     let u = ui.clone();
     util::bg(move || fetch(rescan), move |d| {
@@ -125,7 +125,7 @@ fn act(ui: &Rc<Ui>, msg: &str, prog: &str, args: &[&str]) {
     ui.status.set_text(msg);
     let u = ui.clone();
     util::run(prog, args, move |o| {
-        u.status.set_text(&if o.ok { String::new() } else { format!("failed: {}", o.msg()) });
+        u.status.set_text(&if o.ok { String::new() } else { format!("Failed: {}", o.msg()) });
         refresh(&u, false);
     });
 }
@@ -135,17 +135,17 @@ fn render(ui: &Rc<Ui>, d: Data) {
     ui.switch.set_active(d.radio);
     ui.loading.set(false);
     ui.sub.set_text(&match (&d.active_con, d.radio) {
-        (_, false) => "wi-fi is off".to_string(),
-        (Some(c), _) => format!("connected to {c}{}", if d.ip.is_empty() { String::new() } else { format!(" · {}", d.ip) }),
-        (None, _) => "not connected".to_string(),
+        (_, false) => "Wi-Fi is off".to_string(),
+        (Some(c), _) => format!("Connected to {c}{}", if d.ip.is_empty() { String::new() } else { format!(" · {}", d.ip) }),
+        (None, _) => "Not connected".to_string(),
     });
     ui::clear(&ui.list);
     if !d.radio {
-        ui.list.append(&ui::label("turn wi-fi on to see networks", &["empty"]));
+        ui.list.append(&ui::label("Turn Wi-Fi on to see networks", &["empty"]));
         return;
     }
     if d.nets.is_empty() {
-        ui.list.append(&ui::label("no networks found · try rescan", &["empty"]));
+        ui.list.append(&ui::label("No networks found · try rescan", &["empty"]));
         return;
     }
     for n in d.nets {
@@ -171,38 +171,38 @@ fn render(ui: &Rc<Ui>, d: Data) {
         let pw = gtk::PasswordEntry::new();
         pw.set_show_peek_icon(true);
         pw.set_hexpand(true);
-        pw.set_placeholder_text(Some("password"));
-        let go = ui::button("connect", &["suggested"]);
+        pw.set_placeholder_text(Some("Password"));
+        let go = ui::button("Connect", &["suggested"]);
         pw_row.append(&pw);
         pw_row.append(&go);
         rev.set_child(Some(&pw_row));
 
         if n.active {
-            let forget = ui::button("forget", &["flat", "danger"]);
-            let dis = ui::button("disconnect", &[]);
+            let forget = ui::button("Forget", &["flat", "danger"]);
+            let dis = ui::button("Disconnect", &[]);
             let (u, con) = (ui.clone(), d.active_con.clone().unwrap_or(n.ssid.clone()));
-            dis.connect_clicked(move |_| act(&u, "disconnecting…", "nmcli", &["con", "down", "id", &con]));
+            dis.connect_clicked(move |_| act(&u, "Disconnecting…", "nmcli", &["con", "down", "id", &con]));
             let (u, s) = (ui.clone(), n.ssid.clone());
-            forget.connect_clicked(move |_| act(&u, "forgetting…", "nmcli", &["con", "delete", "id", &s]));
+            forget.connect_clicked(move |_| act(&u, "Forgetting…", "nmcli", &["con", "delete", "id", &s]));
             r.suffix(&forget);
             r.suffix(&dis);
         } else {
             if n.saved {
-                let forget = ui::button("forget", &["flat", "danger"]);
+                let forget = ui::button("Forget", &["flat", "danger"]);
                 let (u, s) = (ui.clone(), n.ssid.clone());
-                forget.connect_clicked(move |_| act(&u, "forgetting…", "nmcli", &["con", "delete", "id", &s]));
+                forget.connect_clicked(move |_| act(&u, "Forgetting…", "nmcli", &["con", "delete", "id", &s]));
                 r.suffix(&forget);
             }
-            let con = ui::button("connect", &[]);
+            let con = ui::button("Connect", &[]);
             let (u, n2, rv, pwf) = (ui.clone(), n.clone(), rev.clone(), pw.clone());
             con.connect_clicked(move |_| {
                 if n2.saved {
-                    act(&u, &format!("connecting to {}…", n2.ssid), "nmcli", &["con", "up", "id", &n2.ssid]);
+                    act(&u, &format!("Connecting to {}…", n2.ssid), "nmcli", &["con", "up", "id", &n2.ssid]);
                 } else if n2.secure {
                     rv.set_reveal_child(!rv.reveals_child());
                     pwf.grab_focus();
                 } else {
-                    act(&u, &format!("connecting to {}…", n2.ssid), "nmcli", &["dev", "wifi", "connect", &n2.ssid]);
+                    act(&u, &format!("Connecting to {}…", n2.ssid), "nmcli", &["dev", "wifi", "connect", &n2.ssid]);
                 }
             });
             r.suffix(&con);
@@ -213,7 +213,7 @@ fn render(ui: &Rc<Ui>, d: Data) {
                     if t.is_empty() {
                         return;
                     }
-                    act(&u, &format!("connecting to {s}…"), "nmcli", &["dev", "wifi", "connect", &s, "password", &t]);
+                    act(&u, &format!("Connecting to {s}…"), "nmcli", &["dev", "wifi", "connect", &s, "password", &t]);
                 }
             };
             let s2 = submit.clone();
@@ -227,7 +227,7 @@ fn render(ui: &Rc<Ui>, d: Data) {
 }
 
 pub fn build() -> gtk::Widget {
-    let p = ui::page("󰤨", "wi-fi", "");
+    let p = ui::page("󰤨", "Wi-Fi", "");
 
 
     if let Some(b) = deps::banner(&[&deps::NETWORKMANAGER], || crate::reload_page("wifi")) {
@@ -243,16 +243,16 @@ pub fn build() -> gtk::Widget {
     p.actions.append(&rescan);
     let top = ui::card();
     let sw = ui::switch(false);
-    let r = ui::row("󰖩", "wi-fi", "wireless radio");
+    let r = ui::row("󰖩", "Wi-Fi", "Wireless radio");
     r.icon.add_css_class("on");
     r.suffix(&sw);
     top.append(&r.row);
     p.body.append(&top);
 
     let status = ui::label("", &["status"]);
-    p.body.append(&ui::label("networks", &["section"]));
+    p.body.append(&ui::label("Networks", &["section"]));
     let list = ui::card();
-    list.append(&ui::label("loading…", &["empty"]));
+    list.append(&ui::label("Loading…", &["empty"]));
     p.body.append(&list);
     p.body.append(&status);
 
@@ -264,7 +264,7 @@ pub fn build() -> gtk::Widget {
             return;
         }
         let on = s.is_active();
-        act(&u, if on { "turning on…" } else { "turning off…" }, "nmcli", &["radio", "wifi", if on { "on" } else { "off" }]);
+        act(&u, if on { "Turning on…" } else { "Turning off…" }, "nmcli", &["radio", "wifi", if on { "on" } else { "off" }]);
     });
     let u = ui.clone();
     rescan.connect_clicked(move |_| refresh(&u, true));

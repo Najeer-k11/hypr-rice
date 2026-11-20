@@ -243,6 +243,10 @@ to GeistMono if not. Its sizes follow the GTK text scaling factor
 (`gsettings get org.gnome.desktop.interface text-scaling-factor`), or `SLAP_FONT_SCALE=1.1`
 to override. Previews of text files stay monospace.
 
+rice-settings also uses Google Sans Flex, with Nerd Font glyphs and aligned numbers kept on
+GeistMono. It sizes itself from the monitor's real DPI, so it looks the same at any Hyprland
+scale. Set `RICE_SETTINGS_ZOOM=1.25` to override that.
+
 ## Making it yours
 
 - **Monitors.** The config uses every output at its preferred mode. Set resolution, refresh rate

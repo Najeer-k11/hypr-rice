@@ -61,7 +61,7 @@ pub fn run<F: FnOnce(Out) + 'static>(prog: &str, args: &[&str], cb: F) {
                 stderr: String::from_utf8_lossy(&o.stderr).into_owned(),
             },
             Ok(Err(e)) => Out { ok: false, stdout: String::new(), stderr: e.to_string() },
-            Err(_) => Out { ok: false, stdout: String::new(), stderr: "worker crashed".into() },
+            Err(_) => Out { ok: false, stdout: String::new(), stderr: "Worker crashed".into() },
         };
         cb(out);
     });
@@ -144,4 +144,10 @@ pub fn human_bytes(b: u64) -> String {
         i += 1;
     }
     if i >= 3 { format!("{v:.1} {}", units[i]) } else { format!("{v:.0} {}", units[i]) }
+}
+
+/// "personalise" -> "Personalise": sentence case for labels that double as ids.
+pub fn sentence(s: &str) -> String {
+    let mut c = s.chars();
+    c.next().map(|f| f.to_uppercase().chain(c).collect()).unwrap_or_default()
 }

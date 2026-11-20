@@ -22,10 +22,10 @@ pub struct Page {
 
 pub fn page(icon: &str, title: &str, sub: &str) -> Page {
     let body = gtk::Box::new(gtk::Orientation::Vertical, 8);
-    body.set_margin_top(22);
-    body.set_margin_bottom(28);
-    body.set_margin_start(28);
-    body.set_margin_end(28);
+    body.set_margin_top(crate::theme::px(22));
+    body.set_margin_bottom(crate::theme::px(28));
+    body.set_margin_start(crate::theme::px(28));
+    body.set_margin_end(crate::theme::px(28));
 
     let head = gtk::Box::new(gtk::Orientation::Horizontal, 12);
     head.set_margin_bottom(10);
@@ -118,8 +118,23 @@ pub fn row(icon: &str, title: &str, sub: &str) -> Row {
     Row { row: r, icon: ic, sub: s }
 }
 
+/// A button. "<glyph>  label" gets a real icon + label pair (the nerd glyph on the mono font,
+/// a proper gap, sentence-cased text) instead of one string in a proportional font.
 pub fn button(text: &str, classes: &[&str]) -> gtk::Button {
-    let b = gtk::Button::with_label(text);
+    let split = text
+        .split_once(' ')
+        .filter(|(g, rest)| !g.is_empty() && !g.is_ascii() && !rest.trim().is_empty());
+    let b = match split {
+        Some((glyph, rest)) => {
+            let b = gtk::Button::new();
+            let bx = gtk::Box::new(gtk::Orientation::Horizontal, crate::theme::px(6));
+            bx.append(&label(glyph, &["btn-icon"]));
+            bx.append(&label(&crate::util::sentence(rest.trim()), &[]));
+            b.set_child(Some(&bx));
+            b
+        }
+        None => gtk::Button::with_label(text),
+    };
     for c in classes {
         b.add_css_class(c);
     }
@@ -134,7 +149,7 @@ pub fn slider(min: f64, max: f64, step: f64, digits: i32, value: f64) -> gtk::Sc
     s.set_value(value);
     s.set_draw_value(true);
     s.set_value_pos(gtk::PositionType::Right);
-    s.set_size_request(240, -1);
+    s.set_size_request(crate::theme::px(240), -1);
     s.set_valign(gtk::Align::Center);
     // The mouse wheel scrolls the page, never the slider: scrolling past a slider must
     // not silently change a setting.

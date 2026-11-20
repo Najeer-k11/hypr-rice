@@ -27,14 +27,14 @@ fn fmt_scale(s: f64) -> String {
 }
 
 pub fn build() -> gtk::Widget {
-    let p = ui::page("󰍹", "display", "resolution, refresh rate and scale");
+    let p = ui::page("󰍹", "Display", "Resolution, refresh rate and scale");
     if let Some(b) = hypr::persist_banner() {
         p.body.append(&b);
     }
     let mons = monitors();
     if mons.is_empty() {
         let c = ui::card();
-        c.append(&ui::label("no monitors reported by hyprctl", &["empty"]));
+        c.append(&ui::label("No monitors reported by hyprctl", &["empty"]));
         p.body.append(&c);
     }
 
@@ -66,13 +66,13 @@ pub fn build() -> gtk::Widget {
             res == format!("{w}x{h}") && (rate.trim_end_matches("Hz").parse::<f64>().unwrap_or(0.0) - hz).abs() < 0.5
         });
         let mode_dd = ui::dropdown(&lrefs, cur_i.unwrap_or(0) as u32);
-        let r = ui::row("󰹑", "resolution", "");
+        let r = ui::row("󰹑", "Resolution", "");
         r.suffix(&mode_dd);
         ui::add(&c, &r.row);
 
         let scale_dd = gtk::DropDown::from_strings(&[]);
         scale_dd.set_valign(gtk::Align::Center);
-        let r = ui::row("󰁌", "scale", "bigger = larger text and windows");
+        let r = ui::row("󰁌", "Scale", "Bigger = larger text and windows");
         r.suffix(&scale_dd);
         ui::add(&c, &r.row);
 
@@ -114,7 +114,7 @@ pub fn build() -> gtk::Widget {
             fs(d.selected(), cur);
         });
 
-        let apply = ui::button("apply", &["suggested"]);
+        let apply = ui::button("Apply", &["suggested"]);
         let status = ui::label("", &["row-sub"]);
         status.set_hexpand(true);
         let ar = gtk::Box::new(gtk::Orientation::Horizontal, 8);
@@ -130,7 +130,7 @@ pub fn build() -> gtk::Widget {
             let mode = uniq.get(md.selected() as usize).map(|m| m.trim_end_matches("Hz").to_string()).unwrap_or_else(|| "preferred".into());
             let s = cell.borrow().get(sd.selected() as usize).copied().unwrap_or(1.0);
             hypr::set_monitor(&name2, &mode, &pos, (s * 1000.0).round() / 1000.0);
-            st.set_text(&format!("applied · saved to {}", util::tilde(&hypr::override_path())));
+            st.set_text(&format!("Applied · saved to {}", util::tilde(&hypr::override_path())));
             let (hd, name3) = (hd.clone(), name2.clone());
             gtk::glib::timeout_add_local_once(std::time::Duration::from_millis(900), move || {
                 if let Some(m) = monitors().into_iter().find(|m| m["name"] == name3.as_str()) {

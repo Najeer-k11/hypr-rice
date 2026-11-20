@@ -31,17 +31,17 @@ fn is_asus() -> bool {
 
 /// (effect id, label, colours used, has speed)
 const ASUS_EFFECTS: &[(&str, &str, u8, bool)] = &[
-    ("static", "static", 1, false),
-    ("breathe", "breathe", 2, true),
-    ("pulse", "pulse", 1, false),
-    ("rainbow-cycle", "colour cycle", 0, true),
-    ("rainbow-wave", "rainbow wave", 0, true),
+    ("static", "Static", 1, false),
+    ("breathe", "Breathe", 2, true),
+    ("pulse", "Pulse", 1, false),
+    ("rainbow-cycle", "Colour cycle", 0, true),
+    ("rainbow-wave", "Rainbow wave", 0, true),
 ];
 const RGB_EFFECTS: &[(&str, &str, u8, bool)] = &[("static", "static", 1, false), ("off", "off", 0, false)];
 
 const PRESETS: &[(&str, &str)] = &[
-    ("white", "ffffff"), ("red", "ff0000"), ("orange", "ff5a00"), ("yellow", "ffc800"),
-    ("green", "00ff3c"), ("cyan", "00e5ff"), ("blue", "0040ff"), ("purple", "8a2be2"), ("pink", "ff1e8c"),
+    ("white", "Ffffff"), ("red", "Ff0000"), ("orange", "Ff5a00"), ("yellow", "Ffc800"),
+    ("green", "00ff3c"), ("cyan", "00e5ff"), ("blue", "0040ff"), ("purple", "8a2be2"), ("pink", "Ff1e8c"),
 ];
 
 // ------------------------------------------------------------------ state --
@@ -201,21 +201,21 @@ fn set_brightness(dir: &std::path::Path, v: u32, done: impl FnOnce(bool) + 'stat
 
 // --------------------------------------------------------------------- ui --
 pub fn build() -> gtk::Widget {
-    let p = ui::page("󰌌", "keyboard", "backlight and colours");
+    let p = ui::page("󰌌", "Keyboard", "Backlight and colours");
 
     // ---- brightness
-    p.body.append(&ui::label("backlight", &["section"]));
+    p.body.append(&ui::label("Backlight", &["section"]));
     match led_dir() {
         None => {
             let c = ui::card();
-            c.append(&ui::label("no keyboard backlight found", &["empty"]));
+            c.append(&ui::label("No keyboard backlight found", &["empty"]));
             p.body.append(&c);
         }
         Some(dir) => {
             let c = ui::card();
             let max = read_num(dir.join("max_brightness")).max(1);
             let cur = read_num(dir.join("brightness"));
-            let r = ui::row("󰌌", "brightness", "");
+            let r = ui::row("󰌌", "Brightness", "");
             r.icon.add_css_class("on");
             let status = r.sub.clone();
             if max <= 4 {
@@ -247,7 +247,7 @@ pub fn build() -> gtk::Widget {
                             let st = st.clone();
                             set_brightness(&d, i as u32, move |ok| {
                                 st.set_visible(!ok);
-                                st.set_text("couldn't change it · install brightnessctl");
+                                st.set_text("Couldn't change it · install brightnessctl");
                             });
                         }
                     });
@@ -274,7 +274,7 @@ pub fn build() -> gtk::Widget {
     }
 
     // ---- colour
-    p.body.append(&ui::label("colour", &["section"]));
+    p.body.append(&ui::label("Colour", &["section"]));
     let be = backend();
     let need: Vec<&'static deps::Dep> = match (be, is_asus()) {
         (Backend::None, true) => vec![&deps::ASUSCTL],
@@ -293,7 +293,7 @@ pub fn build() -> gtk::Widget {
     let c = ui::card();
 
     let follow = ui::switch(state.borrow().follow);
-    let r = ui::row("󰸉", "follow wallpaper", "use the wallpaper's accent colour, updated on every change");
+    let r = ui::row("󰸉", "Follow wallpaper", "Use the wallpaper's accent colour, updated on every change");
     r.icon.add_css_class("on");
     r.suffix(&follow);
     ui::add(&c, &r.row);
@@ -301,7 +301,7 @@ pub fn build() -> gtk::Widget {
     let labels: Vec<&str> = effects.iter().map(|e| e.1).collect();
     let cur_i = effects.iter().position(|e| e.0 == state.borrow().effect).unwrap_or(0);
     let effect = ui::dropdown(&labels, cur_i as u32);
-    let r = ui::row("󰌁", "effect", "");
+    let r = ui::row("󰌁", "Effect", "");
     r.suffix(&effect);
     ui::add(&c, &r.row);
 
@@ -327,12 +327,12 @@ pub fn build() -> gtk::Widget {
         sw.set_margin_start(36);
         sw.set_halign(gtk::Align::Start);
         let mut items: Vec<(String, String)> =
-            ["primary", "secondary", "tertiary"].iter().map(|r| (format!("kv-{r}"), format!("wallpaper {r}"))).collect();
+            ["Primary", "secondary", "tertiary"].iter().map(|r| (format!("kv-{r}"), format!("wallpaper {r}"))).collect();
         items.extend(PRESETS.iter().map(|(n, _)| (format!("kc-{n}"), n.to_string())));
         for (class, tip) in items {
             let b = gtk::Button::new();
             b.add_css_class("led");
-            b.set_size_request(26, 26);
+            b.set_size_request(crate::theme::px(26), crate::theme::px(26));
             b.set_halign(gtk::Align::Center);
             b.set_valign(gtk::Align::Center);
             b.add_css_class(&class);
@@ -343,13 +343,13 @@ pub fn build() -> gtk::Widget {
         wrap.append(&sw);
         (wrap, entry, sw)
     };
-    let (pick1, entry1, sw1) = mk_picker("colour", "");
-    let (pick2, entry2, sw2) = mk_picker("second colour", "breathe fades between the two");
+    let (pick1, entry1, sw1) = mk_picker("Colour", "");
+    let (pick2, entry2, sw2) = mk_picker("Second colour", "breathe fades between the two");
     ui::add(&c, &pick1);
     ui::add(&c, &pick2);
 
     let speed = ui::dropdown(&["low", "med", "high"], ["low", "med", "high"].iter().position(|s| *s == state.borrow().speed).unwrap_or(1) as u32);
-    let speed_row = ui::row("󰾆", "speed", "");
+    let speed_row = ui::row("󰾆", "Speed", "");
     speed_row.suffix(&speed);
     ui::add(&c, &speed_row.row);
     p.body.append(&c);
@@ -400,11 +400,11 @@ pub fn build() -> gtk::Widget {
             let st = status.clone();
             deb.run(200, move || {
                 let Some(a) = command(&k) else { return };
-                st.set_text("applying…");
+                st.set_text("Applying…");
                 let args: Vec<&str> = a[1..].iter().map(String::as_str).collect();
                 let st2 = st.clone();
                 util::run(&a[0], &args, move |o| {
-                    st2.set_text(&if o.ok { String::new() } else { format!("failed: {}", o.msg()) });
+                    st2.set_text(&if o.ok { String::new() } else { format!("Failed: {}", o.msg()) });
                 });
             });
         })

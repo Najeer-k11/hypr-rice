@@ -90,17 +90,17 @@ pub fn persist_banner() -> Option<gtk::Box> {
     card.add_css_class("banner");
     let r = ui::row(
         "󰆓",
-        "changes won't survive a restart yet",
-        &format!("add one line to {} so it loads {}", util::tilde(&main_config()), util::tilde(&override_path())),
+        "Changes won't survive a restart yet",
+        &format!("Add one line to {} so it loads {}", util::tilde(&main_config()), util::tilde(&override_path())),
     );
     r.icon.add_css_class("accent");
-    let b = ui::button("add it", &["suggested"]);
+    let b = ui::button("Add it", &["suggested"]);
     let (c, sub) = (card.clone(), r.sub.clone());
     b.connect_clicked(move |_| {
         if enable_include() {
             c.set_visible(false);
         } else {
-            sub.set_text("couldn't edit the config file");
+            sub.set_text("Couldn't edit the config file");
         }
     });
     r.suffix(&b);
@@ -170,6 +170,33 @@ pub fn set(name: &str, v: Value) {
         save(&s);
         write_override(&s);
     });
+}
+
+/// Resize this app's own (floating) window to `w`×`h` logical px and re-centre it. Hyprland keeps a
+/// floating window's size across scale changes, so the app asks for its new zoomed size itself.
+pub fn fit_window(w: i32, h: i32) {
+    if std::env::var_os("HYPRLAND_INSTANCE_SIGNATURE").is_none() {
+        return;
+    }
+    let pid = std::process::id() as i64;
+    let Some(addr) = util::sh("hyprctl", &["clients", "-j"])
+        .and_then(|s| serde_json::from_str::<Value>(&s).ok())
+        .and_then(|v| {
+            v.as_array()?.iter().find(|c| c["pid"].as_i64() == Some(pid) && c["floating"] == true)?["address"]
+                .as_str()
+                .map(String::from)
+        })
+    else {
+        return; // tiled (or not found): the layout decides the size
+    };
+    if is_lua() {
+        let sel = format!("address:{addr}");
+        util::hyprctl(&["eval", &format!("hl.dispatch(hl.dsp.window.resize({{ x = {w}, y = {h}, window = {sel:?} }}))")]);
+        util::hyprctl(&["eval", &format!("hl.dispatch(hl.dsp.window.center({{ window = {sel:?} }}))")]);
+    } else {
+        util::hyprctl(&["dispatch", "resizewindowpixel", &format!("exact {w} {h},address:{addr}")]);
+        util::hyprctl(&["dispatch", "centerwindow"]);
+    }
 }
 
 /// Drop every window-look override (monitors are kept) and reload Hyprland.

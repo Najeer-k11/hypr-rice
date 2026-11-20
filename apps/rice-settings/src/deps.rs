@@ -28,23 +28,23 @@ macro_rules! dep {
     };
 }
 
-dep!(MATUGEN, ["matugen"], "matugen", "generates the colour palette from your wallpaper",
+dep!(MATUGEN, ["matugen"], "matugen", "Generates the colour palette from your wallpaper",
      arch="matugen-bin", aur=true, apt="", dnf="", zypper="", service=None, hint="cargo install matugen");
-dep!(WALLPAPER, ["awww", "swww", "hyprpaper"], "swww", "sets the wallpaper (awww, swww or hyprpaper)",
+dep!(WALLPAPER, ["awww", "swww", "hyprpaper"], "swww", "Sets the wallpaper (awww, swww or hyprpaper)",
      arch="swww", aur=false, apt="swww", dnf="swww", zypper="swww", service=None, hint="");
-dep!(NETWORKMANAGER, ["nmcli"], "NetworkManager", "wi-fi scanning and connecting",
+dep!(NETWORKMANAGER, ["nmcli"], "NetworkManager", "Wi-Fi scanning and connecting",
      arch="networkmanager", aur=false, apt="network-manager", dnf="NetworkManager", zypper="NetworkManager", service=Some("NetworkManager"), hint="");
-dep!(BLUEZ, ["bluetoothctl"], "BlueZ", "bluetooth devices",
+dep!(BLUEZ, ["bluetoothctl"], "BlueZ", "Bluetooth devices",
      arch="bluez bluez-utils", aur=false, apt="bluez", dnf="bluez", zypper="bluez", service=Some("bluetooth"), hint="");
-dep!(PPD, ["powerprofilesctl"], "power-profiles-daemon", "power saver / balanced / performance",
+dep!(PPD, ["powerprofilesctl"], "power-profiles-daemon", "Power saver / balanced / performance",
      arch="power-profiles-daemon", aur=false, apt="power-profiles-daemon", dnf="power-profiles-daemon", zypper="power-profiles-daemon", service=Some("power-profiles-daemon"), hint="");
-dep!(BRIGHTNESSCTL, ["brightnessctl"], "brightnessctl", "keyboard backlight without root",
+dep!(BRIGHTNESSCTL, ["brightnessctl"], "brightnessctl", "Keyboard backlight without root",
      arch="brightnessctl", aur=false, apt="brightnessctl", dnf="brightnessctl", zypper="brightnessctl", service=None, hint="");
 dep!(ASUSCTL, ["asusctl"], "asusctl", "ASUS keyboard RGB, charge limit and profiles",
      arch="asusctl", aur=true, apt="", dnf="asusctl", zypper="", service=Some("asusd"), hint="see asus-linux.org");
 dep!(OPENRGB, ["openrgb"], "OpenRGB", "RGB control for non-ASUS keyboards",
      arch="openrgb", aur=false, apt="openrgb", dnf="openrgb", zypper="OpenRGB", service=None, hint="");
-dep!(WAYBAR, ["waybar"], "Waybar", "the panel",
+dep!(WAYBAR, ["waybar"], "Waybar", "The panel",
      arch="waybar", aur=false, apt="waybar", dnf="waybar", zypper="waybar", service=None, hint="");
 
 pub const ALL: &[&Dep] = &[&MATUGEN, &WALLPAPER, &WAYBAR, &NETWORKMANAGER, &BLUEZ, &PPD, &BRIGHTNESSCTL, &ASUSCTL, &OPENRGB];
@@ -96,7 +96,7 @@ fn no_cmd_hint(d: &Dep) -> String {
     } else if !d.hint.is_empty() {
         d.hint.to_string()
     } else {
-        format!("install {} with your package manager", d.name)
+        format!("Install {} with your package manager", d.name)
     }
 }
 
@@ -153,7 +153,7 @@ pub fn banner(deps: &[&'static Dep], on_done: impl Fn() + 'static) -> Option<gtk
                             b2.set_sensitive(true);
                             od();
                         }) {
-                            sub.set_text(&format!("no terminal found · run: {cmd}"));
+                            sub.set_text(&format!("No terminal found · run: {cmd}"));
                             b.set_sensitive(true);
                         }
                     });
@@ -166,7 +166,7 @@ pub fn banner(deps: &[&'static Dep], on_done: impl Fn() + 'static) -> Option<gtk
             r
         } else if let Some(s) = d.service.filter(|s| !service_active(s)) {
             let r = ui::row("󰒲", &format!("{s} service is not running"), d.why);
-            let b = ui::button("start", &["suggested"]);
+            let b = ui::button("Start", &["suggested"]);
             let od = on_done.clone();
             let s = s.to_string();
             b.connect_clicked(move |b| {
@@ -175,7 +175,7 @@ pub fn banner(deps: &[&'static Dep], on_done: impl Fn() + 'static) -> Option<gtk
                 util::run("pkexec", &["systemctl", "enable", "--now", &s], move |o| {
                     b2.set_sensitive(true);
                     if !o.ok {
-                        util::notify("couldn't start service", &o.msg());
+                        util::notify("Couldn't start service", &o.msg());
                     }
                     od();
                 });

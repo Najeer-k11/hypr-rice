@@ -41,12 +41,12 @@ fn module_info(m: &str) -> (&'static str, String) {
     };
     let name = m.rsplit('/').next().unwrap_or(m);
     let name = match name {
-        "pulseaudio" | "wireplumber" => "volume",
-        "mpris" => "media",
-        "window" => "window title",
-        "profile" => "power profile",
-        "power" => "power button",
-        n => n,
+        "pulseaudio" | "wireplumber" => "Volume",
+        "mpris" => "Media",
+        "window" => "Window title",
+        "profile" => "Power profile",
+        "power" => "Power button",
+        n => return (icon, crate::util::sentence(n)),
     };
     (icon, name.to_string())
 }
@@ -128,14 +128,14 @@ impl Bar {
 }
 
 pub fn build() -> gtk::Widget {
-    let p = ui::page("󰕮", "panel", &format!("waybar · {}", util::tilde(&cfg_path())));
+    let p = ui::page("󰕮", "Panel", &format!("Waybar · {}", util::tilde(&cfg_path())));
 
     if let Some(b) = deps::banner(&[&deps::WAYBAR], || crate::reload_page("panel")) {
         p.body.append(&b);
     }
     let Some(cfg) = read_cfg() else {
         let c = ui::card();
-        c.append(&ui::label("couldn't read waybar config.jsonc", &["empty"]));
+        c.append(&ui::label("Couldn't read waybar config.jsonc", &["empty"]));
         p.body.append(&c);
         return p.root.upcast();
     };
@@ -154,26 +154,26 @@ pub fn build() -> gtk::Widget {
     p.actions.append(&restart);
 
     // ---- layout
-    let c = ui::section(&p.body, "bar");
+    let c = ui::section(&p.body, "Bar");
     let pos = bar.cfg.borrow()["position"].as_str().unwrap_or("top").to_string();
     let dd = ui::dropdown(&["top", "bottom"], if pos == "bottom" { 1 } else { 0 });
-    let r = ui::row("󰞒", "position", "screen edge the bar sits on");
+    let r = ui::row("󰞒", "Position", "Screen edge the bar sits on");
     r.suffix(&dd);
     ui::add(&c, &r.row);
 
     let height = ui::slider(20.0, 48.0, 1.0, 0, bar.num("height", 30.0));
-    let r = ui::row("󰡏", "height", "");
+    let r = ui::row("󰡏", "Height", "");
     r.suffix(&height);
     ui::add(&c, &r.row);
 
     let m0 = if pos == "bottom" { bar.num("margin-bottom", 0.0) } else { bar.num("margin-top", 0.0) };
     let margin = ui::slider(0.0, 20.0, 1.0, 0, m0);
-    let r = ui::row("󰹑", "margin", "gap between the bar and screen edges");
+    let r = ui::row("󰹑", "Margin", "Gap between the bar and screen edges");
     r.suffix(&margin);
     ui::add(&c, &r.row);
 
     let font = ui::slider(9.0, 16.0, 0.5, 1, css_get(&bar.css.borrow(), "*", "font-size").unwrap_or(12.5));
-    let r = ui::row("󰛖", "font size", "");
+    let r = ui::row("󰛖", "Font size", "");
     r.suffix(&font);
     ui::add(&c, &r.row);
 
@@ -252,7 +252,7 @@ pub fn build() -> gtk::Widget {
         }
     };
 
-    let c = ui::section(&p.body, "modules");
+    let c = ui::section(&p.body, "Modules");
     let snap = Rc::new(snap);
     for (sec, mods) in snap.iter() {
         let side = SECTIONS.iter().find(|(k, _)| k == sec).map(|(_, n)| *n).unwrap_or("");
@@ -276,7 +276,7 @@ pub fn build() -> gtk::Widget {
             });
         }
     }
-    p.body.append(&ui::label("changes reload the bar automatically", &["status"]));
+    p.body.append(&ui::label("Changes reload the bar automatically", &["status"]));
     p.root.upcast()
 }
 

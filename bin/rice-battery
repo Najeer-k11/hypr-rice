@@ -2,7 +2,7 @@
 """rice-battery — battery and power dashboard under the waybar battery module.
 
   rice-battery          open the popup, or close it if it's already open
-  rice-battery daemon   log history and switch power profile on plug/unplug
+  rice-battery daemon   runs rice-battery-daemon (logs history, switches power profile on plug/unplug)
                         (started from hyprland.lua; only one instance runs)
 
 History: ~/.local/state/rice/battery.csv (time, percent, watts; 8 days kept).
@@ -561,6 +561,9 @@ def popup():
 
 if __name__ == "__main__":
     import sys
+
+    if sys.argv[1:] == ["daemon"]:  # the daemon is the bash port (~3 MB instead of ~15 MB of Python)
+        os.execvp("rice-battery-daemon", ["rice-battery-daemon"])
 
     if sys.argv[1:] == ["daemon"]:
         daemon()

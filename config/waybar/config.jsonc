@@ -19,8 +19,7 @@
   "modules-right": [
     "tray",
     "custom/profile",
-    "memory",
-    "backlight",
+    "group/sys",
     "custom/arch",
     "group/ctl",
     "clock",
@@ -44,7 +43,7 @@
     "on-scroll-down": "hyprctl dispatch 'hl.dsp.focus({workspace=\"e+1\"})'"
   },
   "custom/lyra": {
-    "exec": "lyra bar",
+    "exec": "lyra-bar",
     "return-type": "json",
     "max-length": 28,
     "escape": false,
@@ -115,8 +114,15 @@
       "bluetooth",
       "network",
       "pulseaudio",
-      "cpu",
       "battery"
+    ]
+  },
+  "group/sys": {
+    "orientation": "inherit",
+    "modules": [
+      "memory",
+      "cpu",
+      "backlight"
     ]
   },
   "bluetooth": {

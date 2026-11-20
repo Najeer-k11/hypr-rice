@@ -56,13 +56,14 @@ hl.env("PATH", table.concat(parts, ":"))
 hl.on("hyprland.start", function()
     hl.exec_cmd("dbus-update-activation-environment --systemd GSK_RENDERER")  -- D-Bus-launched GTK apps (Files…)
     hl.exec_cmd("awww-daemon")
-    hl.exec_cmd("sleep 0.4 && wall restore")
+    hl.exec_cmd("until awww query >/dev/null 2>&1; do sleep 0.05; done; wall restore")  -- as soon as the daemon is up
     hl.exec_cmd("waybar")
     hl.exec_cmd("mako")
     hl.exec_cmd("hypridle")
-    hl.exec_cmd("rice-battery daemon")  -- battery history + profile switch on plug/unplug
-    hl.exec_cmd("systemctl --user start hyprpolkitagent")
-    hl.exec_cmd("nm-applet --indicator")
+    hl.exec_cmd("rice-battery-daemon")  -- battery history + profile switch on plug/unplug (bash, ~3 MB)
+    hl.exec_cmd("/usr/lib/polkit-gnome/polkit-gnome-authentication-agent-1")  -- GTK agent, ~30 MB lighter than Qt hyprpolkitagent
+    -- nm-applet is not started: the bar's wi-fi pill + rice-wifi cover it (saves ~22 MB).
+    -- nm-connection-editor (VPNs, static IPs) still works when you need it.
     hl.exec_cmd("wl-paste --type text  --watch cliphist store")
     hl.exec_cmd("wl-paste --type image --watch cliphist store")
 end)
@@ -120,7 +121,9 @@ hl.config({
     },
 
     cursor   = { hide_on_key_press = true, inactive_timeout = 5 },
-    xwayland = { force_zero_scaling = true },
+    -- XWayland off to save RAM (~40-60 MB once an X11 app has started it). Set enabled = true
+    -- (here or in local.lua) if you use Steam, Wine or other X11-only apps.
+    xwayland = { enabled = false, force_zero_scaling = true },
     binds    = { workspace_back_and_forth = true },
 
     ecosystem = {
@@ -179,7 +182,7 @@ for _, cls in ipairs({
     "^(nwg-look)$",
     "^(qt5ct|qt6ct)$",
     "^(xdg-desktop-portal-gtk)$",
-    "^(org.kde.polkit-kde-authentication-agent-1|hyprpolkitagent)$",
+    "^(org.kde.polkit-kde-authentication-agent-1|hyprpolkitagent|polkit-gnome-authentication-agent-1)$",
 }) do
     hl.window_rule({ name = "float-" .. cls, match = { class = cls }, float = true, center = true })
 end

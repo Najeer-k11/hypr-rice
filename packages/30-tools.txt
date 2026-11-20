@@ -16,7 +16,7 @@ power-profiles-daemon | power-saver / balanced / performance switching (bar modu
 udisks2 | Lists, mounts, unlocks and safely ejects drives in slap-files.
 libarchive | Provides bsdtar: "extract here" in slap-files (zip, tar.*, 7z, rar, iso).
 zip | "Compress to zip" in slap-files.
-unzip | Unpacks zip files from the terminal.
+unzip | Unpacks zip files; slap-files falls back to it for zips bsdtar can't read.
 zstd | "Compress to tar.zst" in slap-files.
 psmisc | Provides fuser: slap-files names the programs blocking an eject.
 poppler | Provides pdftoppm: PDF thumbnails in slap-files.

@@ -120,6 +120,7 @@ list_everything() {
     say "  sudo install -d -o \$USER $SDDM_THEME          (login theme; owned by you so it can follow the wallpaper)"
     say "  sudo tee /etc/sddm.conf.d/10-rice.conf          (selects the theme)"
     say "  sudo tee /etc/sddm.conf.d/20-rice-greeter.conf  (lets the theme read the battery level)"
+    say "  sudo tee /etc/sddm.conf.d/30-wayland-greeter.conf (optional, if weston is installed: Wayland greeter, less RAM)"
     say "  sudo systemctl enable sddm                      (only if no display manager is enabled yet)"
 
     hdr "Things generated later, on your machine"
@@ -377,6 +378,18 @@ step_sddm() {
     conf="[General]"$'\n'"# lets the rice theme read battery state from /sys"$'\n'"GreeterEnvironment=QML_XHR_ALLOW_FILE_READ=1"
     say "Writing /etc/sddm.conf.d/20-rice-greeter.conf:"; note "$(sed 's/^/    /' <<<"$conf")"
     (( DRY )) || printf '%s\n' "$conf" | sudo tee /etc/sddm.conf.d/20-rice-greeter.conf >/dev/null
+    if have weston; then
+        say "Run the login screen on Wayland (weston, kiosk shell)? It exits after you log in, instead of"
+        say "the default Xorg greeter, which stays in memory (~150 MB) for the whole session."
+        if ask "  Use the Wayland greeter?"; then
+            conf="[General]"$'\n'"# Wayland greeter: weston exits after login; the X11 greeter's Xorg stays resident. Revert: delete this file."
+            conf+=$'\n'"DisplayServer=wayland"$'\n'"GreeterEnvironment=QML_XHR_ALLOW_FILE_READ=1"
+            [[ -d /usr/share/icons/Bibata-Modern-Classic ]] && conf+=",XCURSOR_THEME=Bibata-Modern-Classic,XCURSOR_SIZE=24"
+            conf+=$'\n\n'"[Wayland]"$'\n'"CompositorCommand=weston --shell=kiosk"
+            say "Writing /etc/sddm.conf.d/30-wayland-greeter.conf:"; note "$(sed 's/^/    /' <<<"$conf")"
+            (( DRY )) || printf '%s\n' "$conf" | sudo tee /etc/sddm.conf.d/30-wayland-greeter.conf >/dev/null
+        fi
+    fi
     # wallpaper + colours into the theme (needs the palette step)
     if [[ -x $BIN_HOME/rice-sddm-sync && -f $CONFIG_HOME/hypr/hyprlock-colors.conf ]]; then
         run "$BIN_HOME/rice-sddm-sync" || warn "could not sync wallpaper into the theme yet; it happens on the next wallpaper change"

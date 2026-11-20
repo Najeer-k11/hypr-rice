@@ -914,10 +914,14 @@ impl Browser {
 
     fn extract(self: &Rc<Self>) {
         for it in self.selected().into_iter().filter(|i| !i.is_dir && archive::is_archive(&i.name)) {
-            let p = it.path();
-            let involved = vec![p.clone(), it.dir.to_path_buf()];
-            self.run_job(format!("extracting '{}'", it.name), involved, move |c| archive::extract(&p, c).map(|x| vec![x]));
+            self.extract_file(it.path(), it.name.to_string());
         }
+    }
+
+    pub(crate) fn extract_file(self: &Rc<Self>, p: PathBuf, name: String) {
+        let mut involved = vec![p.clone()];
+        involved.extend(p.parent().map(Path::to_path_buf));
+        self.run_job(format!("extracting '{name}'"), involved, move |c| archive::extract(&p, c).map(|x| vec![x]));
     }
 
     /// A job with an indeterminate progress row + cancel. `work` returns what it created

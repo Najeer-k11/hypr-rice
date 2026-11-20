@@ -23,7 +23,7 @@ fi
 
 if [[ -d /usr/share/sddm/themes/rice ]] && ask "Remove the SDDM login theme and its two config files (sudo)?"; then
     run sudo rm -rf /usr/share/sddm/themes/rice
-    run sudo rm -f /etc/sddm.conf.d/10-rice.conf /etc/sddm.conf.d/20-rice-greeter.conf
+    run sudo rm -f /etc/sddm.conf.d/10-rice.conf /etc/sddm.conf.d/20-rice-greeter.conf /etc/sddm.conf.d/30-wayland-greeter.conf
 fi
 
 if ask "Remove the config files this repo installed (and the palette files matugen generated)?"; then

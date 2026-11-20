@@ -62,17 +62,19 @@ fn quick_access() -> Vec<Place> {
     let home = util::home();
     let mut v = vec![Place::new("\u{f02dc}", "home", home.clone())];
     let dirs = [
-        (U::Desktop, "\u{f0379}", "desktop", "Desktop"),
-        (U::Documents, "\u{f0219}", "documents", "Documents"),
-        (U::Downloads, "\u{f01da}", "downloads", "Downloads"),
-        (U::Pictures, "\u{f02e9}", "pictures", "Pictures"),
-        (U::Music, "\u{f075a}", "music", "Music"),
-        (U::Videos, "\u{f0567}", "videos", "Videos"),
+        (U::Desktop, "\u{f0379}", "Desktop"),
+        (U::Documents, "\u{f0219}", "Documents"),
+        (U::Downloads, "\u{f01da}", "Downloads"),
+        (U::Pictures, "\u{f02e9}", "Pictures"),
+        (U::Music, "\u{f075a}", "Music"),
+        (U::Videos, "\u{f0567}", "Videos"),
     ];
-    for (d, icon, title, default) in dirs {
+    for (d, icon, default) in dirs {
         // no user-dirs.dirs -> glib returns nothing (or $HOME); fall back to the usual names
         let p = glib::user_special_dir(d).filter(|p| *p != home).unwrap_or_else(|| home.join(default));
         if p != home && p.is_dir() && !v.iter().any(|x| x.path == p) {
+            // the folder's real name, case and all (it may be localised or renamed)
+            let title = browser::display_name(&p);
             v.push(Place::new(icon, title, p));
         }
     }

@@ -1,0 +1,59 @@
+#!/bin/bash
+# rice-battery-daemon — shell port of `rice-battery daemon` (Python used ~15 MB RSS, this ~3 MB).
+# Logs battery %/watts to ~/.local/state/rice/battery.csv every 60 s (kept 8 days) and switches
+# the power profile on plug/unplug per ~/.config/rice/battery.json.
+supply() {  # first /sys/class/power_supply entry of this type (BAT0/BAT1, ADP0/AC/ACAD differ per laptop)
+    local d t
+    for d in /sys/class/power_supply/*; do
+        [[ ${d##*/} == hid* ]] && continue
+        read -r t < "$d/type" 2>/dev/null && [[ $t == "$1" ]] && { echo "$d"; return; }
+    done
+    echo "/sys/class/power_supply/$2"
+}
+BAT=$(supply Battery BAT0)
+AC=$(supply Mains ADP0)/online
+[[ -r $BAT/capacity ]] || exit 0  # no battery (desktop): nothing to do
+LOG=$HOME/.local/state/rice/battery.csv
+SETTINGS=$HOME/.config/rice/battery.json
+KEEP=$((8 * 86400))
+
+exec 9>"${XDG_RUNTIME_DIR:-/tmp}/rice-battery-daemon.lock"
+flock -n 9 || exit 0  # already running
+mkdir -p "${LOG%/*}"
+
+prune() {
+    [[ -f $LOG ]] || return
+    awk -F, -v c=$(( EPOCHSECONDS - KEEP )) '$1 >= c' "$LOG" > "$LOG.tmp" && mv "$LOG.tmp" "$LOG"
+}
+
+setting() {  # setting <key> <default>
+    local v
+    v=$(grep -o "\"$1\"[[:space:]]*:[[:space:]]*[^,}]*" "$SETTINGS" 2>/dev/null | sed 's/.*:[[:space:]]*//; s/"//g; s/[[:space:]]*$//')
+    echo "${v:-$2}"
+}
+
+read -r was_ac < "$AC"
+last_log=0 last_prune=$EPOCHSECONDS
+prune
+while :; do
+    now=$EPOCHSECONDS
+    if (( now - last_log >= 60 )); then
+        read -r pct < "$BAT/capacity" || pct=0
+        read -r pw < "$BAT/power_now" || pw=0
+        printf '%d,%d,%d.%02d\n' "$now" "$pct" $((pw / 1000000)) $(((pw % 1000000 + 5000) / 10000)) >> "$LOG"
+        last_log=$now
+    fi
+    if (( now - last_prune >= 3600 )); then prune; last_prune=$now; fi
+    read -r ac < "$AC"
+    if [[ $ac != "$was_ac" ]]; then  # only on a change, so a manual choice sticks until the next one
+        was_ac=$ac
+        if [[ $(setting auto_profile true) == true ]]; then
+            if [[ $ac == 1 ]]; then p=$(setting on_ac balanced); msg="Plugged in"
+            else p=$(setting on_battery power-saver); msg="On battery"; fi
+            powerprofilesctl set "$p"
+            pkill -RTMIN+8 -x waybar  # refresh the bar icon
+            notify-send -a power -t 1500 "Power profile" "$msg: $p"
+        fi
+    fi
+    sleep 5
+done

@@ -16,7 +16,7 @@ The compositor and the pieces you see on screen. Without these there is no deskt
 | [`uwsm`](https://archlinux.org/packages/?name=uwsm) | Starts Hyprland as a systemd-managed session (the "Hyprland (uwsm)" entry on the login screen), so user services start and stop cleanly. |
 | [`hyprlock`](https://archlinux.org/packages/?name=hyprlock) | Lock screen (SUPER+L). Shows the wallpaper, clock, and music / notification / battery lines from rice-lockinfo. |
 | [`hypridle`](https://archlinux.org/packages/?name=hypridle) | Idle daemon: dims at 4 min, locks at 5, screen off at 6, suspends at 15 (config/hypr/hypridle.conf). |
-| [`hyprpolkitagent`](https://archlinux.org/packages/?name=hyprpolkitagent) | The password prompt that appears when an app asks for admin rights. |
+| [`polkit-gnome`](https://archlinux.org/packages/?name=polkit-gnome) | The password prompt that appears when an app asks for admin rights. GTK, about 30 MB lighter than the Qt hyprpolkitagent. |
 | [`xdg-desktop-portal-hyprland`](https://archlinux.org/packages/?name=xdg-desktop-portal-hyprland) | Screen sharing and screenshots for sandboxed apps and browsers. |
 | [`xdg-desktop-portal-gtk`](https://archlinux.org/packages/?name=xdg-desktop-portal-gtk) | The "Open file / Save as" dialogs used by browsers, Code and other apps. |
 | [`waybar`](https://archlinux.org/packages/?name=waybar) | The top bar. Config and style in config/waybar/, colours from matugen. |
@@ -69,7 +69,7 @@ Small programs used by the rice-* scripts in bin/ and by the two apps. Each line
 | [`udisks2`](https://archlinux.org/packages/?name=udisks2) | Lists, mounts, unlocks and safely ejects drives in slap-files. |
 | [`libarchive`](https://archlinux.org/packages/?name=libarchive) | Provides bsdtar: "extract here" in slap-files (zip, tar.*, 7z, rar, iso). |
 | [`zip`](https://archlinux.org/packages/?name=zip) | "Compress to zip" in slap-files. |
-| [`unzip`](https://archlinux.org/packages/?name=unzip) | Unpacks zip files from the terminal. |
+| [`unzip`](https://archlinux.org/packages/?name=unzip) | Unpacks zip files; slap-files falls back to it for zips bsdtar can't read. |
 | [`zstd`](https://archlinux.org/packages/?name=zstd) | "Compress to tar.zst" in slap-files. |
 | [`psmisc`](https://archlinux.org/packages/?name=psmisc) | Provides fuser: slap-files names the programs blocking an eject. |
 | [`poppler`](https://archlinux.org/packages/?name=poppler) | Provides pdftoppm: PDF thumbnails in slap-files. |
@@ -87,7 +87,7 @@ System services the bar modules and settings pages talk to. Skip any you already
 | [`pipewire-jack`](https://archlinux.org/packages/?name=pipewire-jack) | Lets JACK (pro-audio) apps play through PipeWire. |
 | [`pavucontrol`](https://archlinux.org/packages/?name=pavucontrol) | Volume mixer window (right-click the volume in the bar). |
 | [`networkmanager`](https://archlinux.org/packages/?name=networkmanager) | Network service. rice-wifi and rice-settings use its nmcli tool. |
-| [`network-manager-applet`](https://archlinux.org/packages/?name=network-manager-applet) | Tray icon, and the connection editor (nm-connection-editor) for VPNs / static IPs. |
+| [`network-manager-applet`](https://archlinux.org/packages/?name=network-manager-applet) | The connection editor (nm-connection-editor) for VPNs / static IPs. Its tray icon is not started; the bar's wi-fi pill replaces it. |
 | [`bluez`](https://archlinux.org/packages/?name=bluez) | Bluetooth service. |
 | [`bluez-utils`](https://archlinux.org/packages/?name=bluez-utils) | Provides bluetoothctl, used by rice-bt and rice-settings. |
 
@@ -98,6 +98,7 @@ Graphical login with a theme that mirrors the lock screen and follows the wallpa
 | package | what it does here |
 |---|---|
 | [`sddm`](https://archlinux.org/packages/?name=sddm) | Display manager (login screen). The theme lives in sddm/ and is installed to /usr/share/sddm/themes/rice. |
+| [`weston`](https://archlinux.org/packages/?name=weston) | Runs the login screen as a Wayland greeter (kiosk shell) that exits after login, instead of an Xorg server that stays resident (~150 MB) for the whole session. |
 
 ## Shell (optional)
 

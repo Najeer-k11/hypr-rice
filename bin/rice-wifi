@@ -7,10 +7,11 @@ if [[ "$radio" != enabled ]]; then
     nmcli radio wifi on; notify-send -a network 'Wi-Fi' 'turned on'; exit 0
 fi
 [[ "$1" == rescan ]] && nmcli dev wifi rescan 2>/dev/null && sleep 2
-cur="$(nmcli -t -f ACTIVE,SSID dev wifi | awk -F: '$1=="yes"{print $2; exit}')"
+# one cached listing (--rescan no): a plain `nmcli dev wifi` triggers a ~2 s blocking scan
+list="$(nmcli -t -f IN-USE,SIGNAL,SECURITY,SSID dev wifi list --rescan no 2>/dev/null)"
+cur="$(awk -F: '$1=="*"{print $4; exit}' <<<"$list")"
 icon() { (( $1 >= 75 )) && echo 󰤨 || { (( $1 >= 50 )) && echo 󰤥; } || { (( $1 >= 25 )) && echo 󰤢; } || echo 󰤟; }
-nets="$(nmcli -t -f IN-USE,SIGNAL,SECURITY,SSID dev wifi list --rescan no 2>/dev/null \
-    | awk -F: '$4!="" && !seen[$4]++' | while IFS=: read -r use sig sec ssid; do
+nets="$(awk -F: '$4!="" && !seen[$4]++' <<<"$list" | while IFS=: read -r use sig sec ssid; do
         lock=$([[ -n "$sec" && "$sec" != "--" ]] && echo '' || echo ' ')
         mark=$([[ "$use" == '*' ]] && echo '●' || echo ' ')
         printf '%s %s  %-28.28s %s %3s%%\n' "$mark" "$(icon "$sig")" "$ssid" "$lock" "$sig"

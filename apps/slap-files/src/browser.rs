@@ -790,7 +790,16 @@ impl Browser {
         }
     }
 
-    pub fn open_file(&self, p: &Path) {
+    pub fn open_file(self: &Rc<Self>, p: &Path) {
+        // Archives with no app registered for them: extract here instead of failing.
+        let fname = p.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+        if crate::archive::is_archive(&fname) {
+            let (ct, _) = gio::content_type_guess(Some(p), None);
+            if gio::AppInfo::default_for_type(&ct, false).is_none() {
+                self.extract_file(p.to_path_buf(), fname);
+                return;
+            }
+        }
         let win = self.root.root().and_downcast::<gtk::Window>();
         let l = gtk::FileLauncher::new(Some(&gio::File::for_path(p)));
         let name = display_name(p);

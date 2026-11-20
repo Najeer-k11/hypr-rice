@@ -63,6 +63,35 @@ pub fn compress(dir: &Path, names: &[String], out: &Path, cancel: &AtomicBool) -
     r
 }
 
+/// Unpack into the (empty) dir `to`: bsdtar first, Info-ZIP `unzip` as a fallback for
+/// zips bsdtar can't read (deflate64, odd encodings, some self-made Windows zips).
+fn unpack(archive: &Path, to: &Path, cancel: &AtomicBool) -> Result<(), String> {
+    let is_zip = archive.to_string_lossy().to_ascii_lowercase().ends_with(".zip");
+    let first = if have("bsdtar") {
+        let mut cmd = Command::new("bsdtar");
+        // a UTF-8 locale, or entries with non-ASCII names fail under LANG=C
+        cmd.env("LC_ALL", "C.UTF-8").arg("-xf").arg(archive).arg("-C").arg(to);
+        ops::run_cmd(cmd, cancel)
+    } else {
+        Err("the 'bsdtar' tool (libarchive) isn't installed".into())
+    };
+    match first {
+        Err(e) if is_zip && e != "cancelled" && have("unzip") => {
+            // start clean: drop whatever bsdtar half-wrote
+            if let Ok(rd) = std::fs::read_dir(to) {
+                for en in rd.flatten() {
+                    let p = en.path();
+                    let _ = if p.is_dir() && !p.is_symlink() { std::fs::remove_dir_all(&p) } else { std::fs::remove_file(&p) };
+                }
+            }
+            let mut cmd = Command::new("unzip");
+            cmd.args(["-q", "-o"]).arg(archive).arg("-d").arg(to);
+            ops::run_cmd(cmd, cancel).map_err(|e2| if e2 == "cancelled" { e2 } else { format!("{e}\n{e2}") })
+        }
+        r => r,
+    }
+}
+
 /// Extract next to the archive. One top-level entry inside -> just that entry;
 /// otherwise a folder named after the archive. Returns what was created.
 pub fn extract(archive: &Path, cancel: &AtomicBool) -> Result<PathBuf, String> {
@@ -71,11 +100,9 @@ pub fn extract(archive: &Path, cancel: &AtomicBool) -> Result<PathBuf, String> {
     let base = stem(&name);
     let tmp = ops::unique_name(parent, &format!(".{base}.extracting"), false);
     std::fs::create_dir(&tmp).map_err(|e| e.to_string())?;
-    let mut cmd = Command::new("bsdtar");
-    cmd.arg("-xf").arg(archive).arg("-C").arg(&tmp);
-    if let Err(e) = ops::run_cmd(cmd, cancel) {
+    if let Err(e) = unpack(archive, &tmp, cancel) {
         let _ = std::fs::remove_dir_all(&tmp);
-        return Err(if e.contains("passphrase") || e.contains("Encrypted") { "the archive is password protected".into() } else { e });
+        return Err(if e.contains("passphrase") || e.contains("ncrypted") || e.contains("password") { "the archive is password protected".into() } else { e });
     }
     let entries: Vec<PathBuf> = std::fs::read_dir(&tmp).map_err(|e| e.to_string())?.flatten().map(|e| e.path()).collect();
     let result = if let [only] = entries.as_slice() {

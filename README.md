@@ -168,9 +168,11 @@ home/.zshrc                  -> ~/.zshrc
 | `rice-wallpicker` | wallpaper carousel (GTK4 / Python) | SUPER+W, bar |
 | `rice-overview` | workspace overview with live window thumbnails; type to filter, drag to move | SUPER+Tab |
 | `rice-windows` | window switcher in the launcher | ALT+Tab |
-| `lyra` | music module in the bar and a player popup with album art | bar |
+| `lyra` | player popup with album art (`lyra bar` hands off to `lyra-bar`) | bar |
+| `lyra-bar` | the bar's music module: bash + one `playerctl --follow` (~3 MB instead of ~33 MB of Python) | bar |
 | `rice-calendar` | month calendar popup | bar clock |
-| `rice-battery` | battery popup with history; its `daemon` logs the battery and switches power profile on plug / unplug | bar battery, autostart |
+| `rice-battery` | battery popup with history | bar battery |
+| `rice-battery-daemon` | logs the battery every minute and switches power profile on plug / unplug (bash, ~3 MB) | autostart |
 | `rice-panel` | draws a dropdown under the bar item that was clicked (wraps fuzzel) | the panels below |
 | `rice-wifi`, `rice-bt`, `rice-mem`, `rice-profile`, `rice-power` | wi-fi, bluetooth, memory / process, power-profile and power-menu panels | bar; SUPER+SHIFT+Escape |
 | `rice-clickout` | closes an open panel when you click outside it | every mouse click (non-consuming bind) |
@@ -212,6 +214,34 @@ home/.zshrc                  -> ~/.zshrc
 | SUPER + / | this list, on screen |
 
 All of them are in [`config/hypr/binds.lua`](config/hypr/binds.lua).
+
+## Light on memory
+
+The session is tuned to sit low at idle. What was changed and why:
+
+- **Long-running bar helpers are small bash loops, not Python.** The music module (`lyra-bar`)
+  and the battery logger (`rice-battery-daemon`) run all session. As Python + GObject they
+  used ~33 MB and ~15 MB; as bash they use ~3 MB each. The popups stay Python, since they only
+  run while open.
+- **polkit-gnome instead of hyprpolkitagent.** Same password prompt, GTK instead of Qt,
+  about 30 MB less.
+- **No nm-applet.** The bar's wi-fi pill and its panel (`rice-wifi`) cover it, which saves ~22 MB.
+  `nm-connection-editor` is still there for VPNs and static IPs.
+- **XWayland is off.** Every app in this setup is native Wayland. If you need Steam, Wine or
+  other X11 apps, set `xwayland = { enabled = true }` in `local.lua`.
+- **Wayland login screen.** The SDDM greeter runs on `weston --shell=kiosk`, which exits after
+  login. The default Xorg greeter stays resident (~150 MB). This one is optional: the
+  installer asks, and it is only offered when `weston` is installed.
+- **Faster wi-fi panel.** `rice-wifi` reads NetworkManager's cached scan once, rather than
+  triggering a ~2 s blocking scan each time it opens.
+
+## Fonts
+
+GeistMono Nerd Font is used everywhere: bar, launcher, terminal and lock screen.
+slap-files uses **Google Sans Flex** for its UI text if that font is installed, and falls back
+to GeistMono if not. Its sizes follow the GTK text scaling factor
+(`gsettings get org.gnome.desktop.interface text-scaling-factor`), or `SLAP_FONT_SCALE=1.1`
+to override. Previews of text files stay monospace.
 
 ## Making it yours
 

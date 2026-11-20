@@ -29,7 +29,7 @@ window#waybar > box { background-color: @bg; border-radius: 6px; }
 .modules-right { margin-right: 4px; }
 
 /* ── pills ────────────────────────────────────────── */
-#workspaces, #custom-lyra, #window, #ctl, #clock {
+#workspaces, #custom-lyra, #window, #sys, #ctl, #clock {
   background-color: @pill;
   margin: 3px;
   padding: 0 7px;
@@ -58,7 +58,7 @@ window#waybar.empty #window { background-color: transparent; color: transparent;
 #custom-lyra.paused, #custom-lyra:hover { color: @dim; }
 
 /* ── status group ─────────────────────────────────── */
-#bluetooth, #network, #pulseaudio, #cpu, #battery { padding: 0 5px; }
+#bluetooth, #network, #pulseaudio, #battery { padding: 0 5px; }
 #bluetooth:hover, #network:hover, #pulseaudio:hover { color: @accent; }
 #bluetooth.off, #bluetooth.disabled, #network.disconnected, #network.disabled, #pulseaudio.muted { color: @dim; }
 #bluetooth.connected { color: @accent; }
@@ -71,7 +71,8 @@ window#waybar.empty #window { background-color: transparent; color: transparent;
 #clock:hover { color: @accent; }
 
 /* ── tray, profile, memory, brightness, wallpaper, power ── */
-#tray, #custom-profile, #memory, #backlight, #custom-arch, #custom-power { padding: 0 6px; }
+#memory, #cpu, #backlight { padding: 0 5px; }
+#tray, #custom-profile, #custom-arch, #custom-power { padding: 0 6px; }
 #custom-profile:hover, #memory:hover, #custom-arch:hover { color: @accent; }
 #custom-profile.performance { color: @warning; }
 #custom-profile.power-saver { color: @accent; }

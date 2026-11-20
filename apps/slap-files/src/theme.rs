@@ -123,15 +123,29 @@ fn rebuild() {
             .replace("{{R}}", &format!("{}", v.radius.clamp(0.0, 18.0)))
             .replace("{{RS}}", &format!("{}", (v.radius * 0.7).clamp(0.0, 12.0)))
             .replace("{{B}}", &format!("{}", v.border.clamp(0.0, 8.0)))
+            .replace("{{FS}}", &format!("{:.2}", base_font_px()))
     });
     css.push_str(&app);
     PROVIDER.with(|p| p.load_from_string(&css));
 }
 
+/// UI text size in px: 14 at 1.0, scaled by the desktop's text-scaling-factor
+/// (or SLAP_FONT_SCALE). Every other size in APP_CSS is in em, so it all follows.
+fn base_font_px() -> f64 {
+    static PX: std::sync::OnceLock<f64> = std::sync::OnceLock::new();
+    *PX.get_or_init(|| {
+    let scale = std::env::var("SLAP_FONT_SCALE").ok().and_then(|v| v.parse::<f64>().ok()).or_else(|| {
+        let out = std::process::Command::new("gsettings").args(["get", "org.gnome.desktop.interface", "text-scaling-factor"]).output().ok()?;
+        String::from_utf8_lossy(&out.stdout).trim().parse::<f64>().ok()
+    });
+    14.0 * scale.unwrap_or(1.0).clamp(0.6, 3.0)
+    })
+}
+
 const APP_CSS: &str = r#"
 window.slap, window.slap popover, window.slap tooltip {
-  font-family: "GeistMono Nerd Font", monospace;
-  font-size: 12.5px;
+  font-family: "Google Sans Flex", "GeistMono Nerd Font", "Symbols Nerd Font", sans-serif;
+  font-size: {{FS}}px;
 }
 window.slap { background: @surface; color: @on_surface; }
 
@@ -142,8 +156,8 @@ window.slap { background: @surface; color: @on_surface; }
   padding: 14px 8px 12px 8px;
 }
 .brand { padding: 2px 10px 14px 10px; }
-.brand-icon { color: @primary; font-size: 17px; }
-.brand-title { font-weight: 700; font-size: 13.5px; }
+.brand-icon { color: @primary; font-size: 1.36em; }
+.brand-title { font-weight: 700; font-size: 1.08em; }
 .nav, .nav > row { background: transparent; }
 .nav > row {
   padding: 6px 10px; margin: 1px 0;
@@ -155,9 +169,9 @@ window.slap { background: @surface; color: @on_surface; }
 .nav > row:selected .nav-icon { color: @primary; }
 .nav > row.nav-head { padding: 12px 10px 4px 10px; }
 .nav > row.nav-head:hover { background: transparent; }
-.nav-head label { color: @outline; font-size: 10.5px; }
-.nav-icon { font-size: 15px; min-width: 24px; }
-.sidebar-foot { color: @outline; font-size: 10.5px; padding: 0 10px; }
+.nav-head label { color: @outline; font-size: 0.84em; }
+.nav-icon { font-size: 1.2em; min-width: 24px; }
+.sidebar-foot { color: @outline; font-size: 0.84em; padding: 0 10px; }
 
 /* ---------- toolbar / address ---------- */
 .fm-toolbar { background: @surface; padding: 10px 14px 10px 10px; border-bottom: 1px solid @outline_variant; }
@@ -171,7 +185,7 @@ button:hover { background: @surface_container_highest; }
 button:active { background: @surface_variant; }
 button.tool {
   background: transparent; border-color: transparent;
-  padding: 3px 8px; font-size: 15px; min-width: 18px; color: @on_surface_variant;
+  padding: 3px 8px; font-size: 1.2em; min-width: 18px; color: @on_surface_variant;
 }
 button.tool:hover { background: @surface_container_high; color: @on_surface; }
 button.tool:disabled { color: @outline_variant; background: transparent; }
@@ -194,7 +208,7 @@ button.crumb {
 }
 button.crumb:hover { background: @surface_container_high; color: @on_surface; }
 button.crumb.current { color: @on_surface; font-weight: 600; }
-.crumb-sep { color: @outline; font-size: 10px; margin: 0 1px; }
+.crumb-sep { color: @outline; font-size: 0.8em; margin: 0 1px; }
 
 entry {
   background: @surface_container_low; color: @on_surface;
@@ -212,7 +226,7 @@ columnview > header { background: @surface; border-bottom: 1px solid @outline_va
 columnview > header > button {
   background: transparent; border: none; border-radius: 0;
   padding: 6px 10px; min-height: 18px;
-  color: @outline; font-size: 11px; font-weight: 600;
+  color: @outline; font-size: 0.88em; font-weight: 600;
 }
 columnview > header > button:hover { color: @on_surface; background: @surface_container_low; }
 columnview > header > button sort-indicator { color: @primary; min-width: 12px; min-height: 12px; }
@@ -226,7 +240,7 @@ columnview > listview > row:hover { background: @surface_container_low; }
 columnview > listview > row:selected { background: alpha(@primary, 0.18); }
 columnview > listview > row:selected:hover { background: alpha(@primary, 0.25); }
 columnview > listview > row:focus-visible { outline: 1px solid alpha(@primary, 0.6); outline-offset: -1px; }
-.file-icon { font-size: 16px; min-width: 22px; }
+.file-icon { font-size: 1.28em; min-width: 22px; }
 .cell-dim { color: @outline; }
 
 /* ---------- grid view ---------- */
@@ -239,9 +253,9 @@ gridview > child:hover { background: @surface_container_low; }
 gridview > child:selected { background: alpha(@primary, 0.18); }
 gridview > child:selected:hover { background: alpha(@primary, 0.25); }
 gridview > child:focus-visible { outline: 1px solid alpha(@primary, 0.6); outline-offset: -1px; }
-.grid-icon { font-size: 42px; }
+.grid-icon { font-size: 3.36em; }
 .grid-thumb { border-radius: {{RS}}px; }
-.grid-name { font-size: 11.5px; }
+.grid-name { font-size: 0.92em; }
 
 rubberband { background: alpha(@primary, 0.14); border: 1px solid @primary; }
 
@@ -258,12 +272,12 @@ rubberband { background: alpha(@primary, 0.14); border: 1px solid @primary; }
 .hidden-item { opacity: 0.6; }
 
 /* ---------- empty / status ---------- */
-.empty-view { color: @outline; font-size: 13px; }
+.empty-view { color: @outline; font-size: 1.04em; }
 .empty-view.err { color: @error; }
-.empty-icon { font-size: 44px; color: @outline_variant; }
+.empty-icon { font-size: 3.52em; color: @outline_variant; }
 .statusbar {
   background: @surface_container_low; border-top: 1px solid @outline_variant;
-  padding: 4px 14px; color: @outline; font-size: 11px;
+  padding: 4px 14px; color: @outline; font-size: 0.88em;
 }
 .statusbar .err { color: @error; }
 
@@ -288,7 +302,7 @@ popover.menu modelbutton {
 }
 popover.menu modelbutton:hover, popover.menu modelbutton:focus { background: @surface_container_highest; outline: none; }
 popover.menu modelbutton:disabled { color: @outline; }
-popover.menu modelbutton accelerator { color: @outline; margin-left: 28px; font-size: 11px; }
+popover.menu modelbutton accelerator { color: @outline; margin-left: 28px; font-size: 0.88em; }
 popover.menu separator { background: @outline_variant; min-height: 1px; margin: 4px 6px; }
 
 /* ---------- dialogs (in-window) ---------- */
@@ -298,9 +312,9 @@ popover.menu separator { background: @outline_variant; min-height: 1px; margin: 
   border: {{B}}px solid @outline_variant; border-radius: {{R}}px;
   padding: 18px 18px 14px 18px;
 }
-.dialog-title { font-weight: 700; font-size: 14px; margin-bottom: 2px; }
+.dialog-title { font-weight: 700; font-size: 1.12em; margin-bottom: 2px; }
 .dialog-body { color: @on_surface_variant; }
-.dialog-error { color: @error; font-size: 11px; }
+.dialog-error { color: @error; font-size: 0.88em; }
 button.suggested { background: @primary; color: @on_primary; border-color: @primary; }
 button.suggested:hover { background: @primary_container; color: @on_primary_container; }
 button.destructive { background: @error; color: @on_error; border-color: @error; }
@@ -309,8 +323,8 @@ button:focus-visible { outline: 2px solid alpha(@primary, 0.6); outline-offset: 
 
 /* ---------- operations panel ---------- */
 .ops { background: @surface_container_low; border-top: 1px solid @outline_variant; padding: 8px 14px; }
-.op-title { font-size: 12px; }
-.op-sub { color: @outline; font-size: 11px; }
+.op-title { font-size: 0.96em; }
+.op-sub { color: @outline; font-size: 0.88em; }
 progressbar > trough { background: @surface_container_highest; border-radius: 999px; min-height: 4px; border: none; }
 progressbar > trough > progress { background: @primary; border-radius: 999px; min-height: 4px; min-width: 0; margin: 0; border: none; }
 
@@ -323,9 +337,9 @@ progressbar > trough > progress { background: @primary; border-radius: 999px; mi
 }
 .tab:hover { background: @surface_container; color: @on_surface; }
 .tab.current { background: @surface; border-color: @outline_variant; color: @on_surface; margin-bottom: -1px; }
-.tab-icon { color: @outline; font-size: 14px; }
+.tab-icon { color: @outline; font-size: 1.12em; }
 .tab.current .tab-icon { color: @primary; }
-.tab button.tool { font-size: 12px; padding: 0 6px; min-height: 20px; opacity: 0.6; }
+.tab button.tool { font-size: 0.96em; padding: 0 6px; min-height: 20px; opacity: 0.6; }
 .tab button.tool:hover { opacity: 1; }
 button.tool.tab-add { margin: 0 0 4px 4px; }
 
@@ -335,20 +349,21 @@ button.tool.tab-add { margin: 0 0 4px 4px; }
 /* ---------- preview pane ---------- */
 .preview-wrap { background: @surface_container_low; border-left: 1px solid @outline_variant; }
 .preview { padding: 18px 16px; }
-.preview-icon { font-size: 72px; }
-.preview-name { font-weight: 700; font-size: 13.5px; }
-.preview-meta { color: @outline; font-size: 11.5px; }
+.preview-icon { font-size: 5.76em; }
+.preview-name { font-weight: 700; font-size: 1.08em; }
+.preview-meta { color: @outline; font-size: 0.92em; }
 .preview-text {
   background: @surface_container_lowest; border: 1px solid @outline_variant;
-  border-radius: {{RS}}px; padding: 8px 10px; font-size: 11px; color: @on_surface_variant;
+  border-radius: {{RS}}px; padding: 8px 10px; font-size: 0.88em; color: @on_surface_variant;
+  font-family: "GeistMono Nerd Font", monospace;
 }
 .preview-pic { border-radius: {{RS}}px; }
 paned > separator { background: @outline_variant; min-width: 1px; }
 
 /* ---------- properties / pickers ---------- */
-.prop-key { color: @outline; font-size: 11.5px; }
+.prop-key { color: @outline; font-size: 0.92em; }
 .prop-val { color: @on_surface; }
-.prop-head-icon { font-size: 40px; }
+.prop-head-icon { font-size: 3.2em; }
 .app-list, .app-list > row { background: transparent; }
 .app-list > row { padding: 6px 10px; border-radius: {{RS}}px; }
 .app-list > row:hover { background: @surface_container_high; }
@@ -372,11 +387,11 @@ switch > image { color: transparent; }
   border-radius: {{R}}px; padding: 12px 14px; min-width: 250px;
 }
 .drive-card:hover { background: @surface_container; border-color: @outline; }
-.drive-icon { font-size: 34px; color: @primary; min-width: 40px; }
+.drive-icon { font-size: 2.72em; color: @primary; min-width: 40px; }
 .drive-title { font-weight: 600; }
 progressbar.full > trough > progress { background: @error; }
 .nav > row.unmounted { color: @outline; }
-.nav button.tool.eject { font-size: 13px; padding: 0 6px; min-height: 18px; opacity: 0.7; }
+.nav button.tool.eject { font-size: 1.04em; padding: 0 6px; min-height: 18px; opacity: 0.7; }
 .nav button.tool.eject:hover { opacity: 1; color: @primary; }
 
 /* ---------- drag & drop ---------- */
@@ -385,7 +400,7 @@ progressbar.full > trough > progress { background: @error; }
 .drag-badge {
   background: @surface_container_high; color: @on_surface;
   border: 1px solid @primary; border-radius: {{R}}px; padding: 6px 12px;
-  font-family: "GeistMono Nerd Font", monospace; font-size: 12px;
+  font-family: "Google Sans Flex", "GeistMono Nerd Font", sans-serif; font-size: {{FS}}px;
 }
 button.crumb:drop(active) { background: alpha(@primary, 0.25); color: @on_surface; }
 *:drop(active):focus, *:drop(active) { outline: none; }

@@ -2,3 +2,4 @@
 # required: no
 # about: Graphical login with a theme that mirrors the lock screen and follows the wallpaper. Skip if you use another display manager or log in from a TTY.
 sddm | Display manager (login screen). The theme lives in sddm/ and is installed to /usr/share/sddm/themes/rice.
+weston | Runs the login screen as a Wayland greeter (kiosk shell) that exits after login, instead of an Xorg server that stays resident (~150 MB) for the whole session.

@@ -1,0 +1,29 @@
+#!/bin/bash
+# lyra-bar — shell port of `lyra bar` (waybar custom/lyra). Python+Playerctl GI used ~33 MB RSS;
+# this is bash + one `playerctl --follow`. Follows the most recently updated MPRIS player.
+# `lyra bar` still works: it execs this.
+shopt -u patsub_replacement 2>/dev/null  # else "&" in ${s//x/y} means the match
+esc() {  # HTML-escape then JSON-escape
+    local s=$1
+    s=${s//&/&amp;}; s=${s//</&lt;}; s=${s//>/&gt;}; s=${s//\"/&quot;}; s=${s//\'/&#x27;}
+    s=${s//\\/\\\\}; s=${s//$'\r'/}; s=${s//$'\n'/ }
+    printf '%s' "$s"
+}
+last=
+emit() {
+    [[ $1 != "$last" ]] && { last=$1; printf '%s\n' "$1"; }
+}
+emit '{"text": "", "class": "stopped"}'
+while :; do
+    while IFS=$'\t' read -r status player title artist; do
+        if [[ -z $status ]]; then
+            emit '{"text": "", "class": "stopped"}'
+            continue
+        fi
+        [[ $status == Playing ]] && { icon='󰐊'; cls=playing; } || { icon='󰏤'; cls=paused; }
+        t=$(esc "${title:-unknown}")
+        tip=$(esc "${artist:+$artist — }${title:-unknown}")
+        emit "{\"text\": \"<span font_family='GeistMono Nerd Font Propo' font_size='10.5pt'>$icon</span>  $t\", \"tooltip\": \"$tip\", \"class\": \"$cls\", \"alt\": \"$(esc "$player")\"}"
+    done < <(playerctl --follow metadata --format $'{{status}}\t{{playerName}}\t{{title}}\t{{artist}}' 2>/dev/null)
+    sleep 2  # playerctl exited (shouldn't happen); restart it
+done

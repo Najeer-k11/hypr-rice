@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """lyra — waybar music module + floating player popup (album art + controls).
 
-  lyra bar      waybar custom module: streams JSON whenever the player changes
+  lyra bar      runs lyra-bar, the waybar custom module (streams JSON whenever the player changes)
   lyra toggle   open the popup, or close it if it's already open
 """
 import html
@@ -380,6 +380,8 @@ def fmt(sec):
 
 
 if __name__ == "__main__":
+    if sys.argv[1:2] == ["bar"]:  # the bar module is the bash port lyra-bar (~3 MB instead of ~33 MB)
+        os.execvp("lyra-bar", ["lyra-bar"])
     cmd = sys.argv[1] if len(sys.argv) > 1 else "toggle"
     if cmd == "bar":
         run_bar()

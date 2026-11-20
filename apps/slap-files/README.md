@@ -95,6 +95,8 @@ original location and deletion date: restore, delete for good, empty. Dropping f
 trash trashes them.
 
 *compress to* makes zip / tar.zst / tar.gz / tar.xz; *extract here* handles anything bsdtar
-reads (zip, tar.*, 7z, rar, iso…) and doesn't nest a lone top-level folder.
+reads (zip, tar.*, 7z, rar, iso…) and doesn't nest a lone top-level folder. Zips bsdtar can't
+read (deflate64, odd encodings) fall back to `unzip`. Opening an archive that no app is
+registered for extracts it in place.
 
 Preferences and quick-access pins: `~/.config/slap/files.json`.
